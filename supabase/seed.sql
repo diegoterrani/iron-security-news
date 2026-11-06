@@ -1,6 +1,6 @@
 -- Seed do IRON CYBER NEWS (dev/local). Em produção, ajustar o domínio antes de rodar.
 insert into brands (slug, name, domain)
-values ('iron', 'Iron Security', 'news.example.com')
+values ('iron', 'Iron Security', 'news.iron-security.com')
 on conflict (slug) do nothing;
 
 insert into settings (brand_id)

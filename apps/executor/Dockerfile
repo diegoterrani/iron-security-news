@@ -14,6 +14,9 @@ WORKDIR /app
 COPY --from=build /out/package.json ./package.json
 COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /repo/apps/executor/dist ./dist
+# CA raiz do Supabase (pública): permite sslmode=verify-full no pooler sem desligar a verificação TLS.
+COPY apps/executor/certs/supabase-root-2021.crt /app/certs/supabase-root-2021.crt
+ENV NODE_EXTRA_CA_CERTS=/app/certs/supabase-root-2021.crt
 ARG GIT_SHA=dev
 ENV GIT_SHA=$GIT_SHA
 USER 10001:10001
