@@ -19,3 +19,4 @@ docs/private/
 
 # Link local da Vercel
 .vercel/
+*.tsbuildinfo

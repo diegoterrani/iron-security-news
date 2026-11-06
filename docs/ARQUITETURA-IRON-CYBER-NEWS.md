@@ -246,7 +246,7 @@ DRAFTING ──build ok──▶ AWAITING_REVIEW ──approve──▶ SCHEDULE
 | `card-linkedin` | 1200×627 | LinkedIn |
 | `thumb-short` | 1080×1920 | Thumbnail do Short |
 **Regras:**
-- RN-RND01: Badge de severidade com cor fixa: critical `#E5484D`, high `#F76B15`, medium `#FFC53D`, low `#46A758`, info `#0090FF`.
+- RN-RND01: Badge de severidade com cor fixa: critical `#FF3B45`, high `#FF7A1A`, medium `#FACC15`, low `#22C55E`, info `#00D9FF` (Iron Security Design System).
 - RN-RND02: Slide final sempre é CTA "Leia completo em <dominio>/<lang>/<slug>" + logo.
 - RN-RND03: Arquivos em `media/stories/<story_id>/<lang>/<kind>-<n>.png`; nome com hash de conteúdo para cache-busting.
 
@@ -1035,7 +1035,7 @@ O JWT do Supabase traz `sub`, `email`, `aal`, `amr`. O papel **não** vai no JWT
     "video_inputs": [{
       "character": { "type": "avatar", "avatar_id": "<pool.avatar_id>", "avatar_style": "normal" },
       "voice": { "type": "text", "voice_id": "<pool.voice_id>", "input_text": "<roteiro>", "speed": 1.05 },
-      "background": { "type": "color", "value": "#0B0F14" }
+      "background": { "type": "color", "value": "#050607" }
     }] }
   ```
   Resposta → `data.video_id` gravado em `assets.provider_ref`.

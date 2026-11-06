@@ -27,6 +27,9 @@ const securityHeaders = [
 const config: NextConfig = {
   transpilePackages: ["@ironnews/shared"],
   poweredByHeader: false,
+  async redirects() {
+    return [{ source: "/", destination: "/pt", permanent: false }];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

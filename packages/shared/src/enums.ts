@@ -22,11 +22,11 @@ export type Category = (typeof CATEGORIES)[number];
 export const QUEUES = ["triage", "story_build", "render", "video", "video_events", "publish", "dlq"] as const;
 export type QueueName = (typeof QUEUES)[number];
 
-/** Cores fixas do badge de severidade (RN-RND01). */
+/** Cores fixas do badge de severidade (RN-RND01), alinhadas ao Iron Security Design System. */
 export const SEVERITY_COLORS: Record<Severity, string> = {
-  critical: "#E5484D",
-  high: "#F76B15",
-  medium: "#FFC53D",
-  low: "#46A758",
-  info: "#0090FF",
+  critical: "#FF3B45",
+  high: "#FF7A1A",
+  medium: "#FACC15",
+  low: "#22C55E",
+  info: "#00D9FF",
 };
