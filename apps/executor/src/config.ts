@@ -19,7 +19,10 @@ const EnvSchema = z.object({
     .enum(["0", "1"])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === "1")),
-  GIT_SHA: z.string().default("dev"),
+  GIT_SHA: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : "dev")),
 });
 
 export type Config = z.infer<typeof EnvSchema> & { PUBLISH_DRY_RUN: boolean };
