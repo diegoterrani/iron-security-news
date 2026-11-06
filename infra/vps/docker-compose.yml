@@ -1,0 +1,47 @@
+# IRON CYBER NEWS — VPS de deploy (/opt/ironnews/app)
+# O executor NÃO publica portas: a VPS é compartilhada com outros sistemas (nginx em 80/443).
+name: ironnews
+
+x-executor: &executor
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp:size=512m]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  user: "10001:10001"
+  mem_limit: 1g
+  cpus: "1.0"
+  stop_grace_period: 75s
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+  networks: [ironnews]
+
+services:
+  executor:
+    <<: *executor
+    image: ghcr.io/${GHCR_OWNER:?defina GHCR_OWNER}/ironnews-executor:${IMAGE_TAG:-latest}
+    env_file: /etc/ironnews/executor.env
+
+  # Staging: mesma imagem, banco DEV e PUBLISH_DRY_RUN=1. Sobe com --profile staging.
+  executor-staging:
+    <<: *executor
+    image: ghcr.io/${GHCR_OWNER:?defina GHCR_OWNER}/ironnews-executor:${IMAGE_TAG_STAGING:-latest}
+    env_file: /etc/ironnews/executor-staging.env
+    mem_limit: 512m
+    cpus: "0.5"
+    profiles: ["staging"]
+
+  # Só sob demanda (deploy dos Workers): docker compose --profile deploy run --rm deploy
+  deploy:
+    build:
+      context: ../..
+      dockerfile: infra/vps/deploy.Dockerfile
+    env_file: /etc/ironnews/deploy.env
+    read_only: false
+    networks: [ironnews]
+    profiles: ["deploy"]
+
+networks:
+  ironnews:
+    name: ironnews_net

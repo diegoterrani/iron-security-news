@@ -1,0 +1,14 @@
+name = "ironnews-og-render"
+main = "src/index.ts"
+compatibility_date = "2025-10-01"
+workers_dev = false
+
+# routes = [{ pattern = "render.<dominio>/*", zone_name = "<dominio>" }]
+
+[observability]
+enabled = true
+
+# Secrets (wrangler secret put): RENDER_SECRET
+
+[env.staging]
+name = "ironnews-og-render-staging"

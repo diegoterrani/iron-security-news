@@ -1,0 +1,15 @@
+create index raw_items_status_idx      on raw_items (status) where status = 'new';
+create index raw_items_cluster_idx     on raw_items (cluster_id);
+create index raw_items_published_idx   on raw_items (published_at desc);
+create index raw_items_cve_gin         on raw_items using gin (cve_ids);
+create index clusters_recent_idx       on clusters (last_seen_at desc) where blocked = false;
+create index clusters_score_idx        on clusters (top_score desc) where blocked = false;
+create index clusters_cve_gin          on clusters using gin (cve_ids);
+create index clusters_centroid_hnsw    on clusters using hnsw (centroid vector_cosine_ops);
+create index stories_status_idx        on stories (status, created_at desc);
+create index contents_latest_idx       on story_contents (story_id, channel, lang, kind, version desc);
+create index contents_search_gin       on story_contents using gin (search);
+create index contents_title_trgm       on story_contents using gin (title gin_trgm_ops);
+create index posts_due_idx             on channel_posts (scheduled_for) where status = 'pending';
+create index llm_usage_month_idx       on llm_usage (created_at);
+create index audit_entity_idx          on audit_log (entity, entity_id, created_at desc);

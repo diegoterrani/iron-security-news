@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/.wrangler
+.git
+.env
+.env.*
+**/.dev.vars
+docs

@@ -1,0 +1,17 @@
+name = "ironnews-edge-hooks"
+main = "src/index.ts"
+compatibility_date = "2025-10-01"
+workers_dev = false
+
+# Ajustar <dominio> quando o domínio for definido.
+# routes = [{ pattern = "hooks.<dominio>/*", zone_name = "<dominio>" }]
+
+[observability]
+enabled = true
+
+# Secrets (wrangler secret put): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+# HEYGEN_WEBHOOK_SECRET, META_APP_SECRET
+
+[env.staging]
+name = "ironnews-edge-hooks-staging"
+# routes = [{ pattern = "hooks-staging.<dominio>/*", zone_name = "<dominio>" }]
