@@ -16,3 +16,7 @@ supabase/.branches/
 
 # Documentação interna (IPs, inventário e achados de segurança da VPS) — nunca versionar
 docs/private/
+.vercel
+
+.vercel
+.env*
