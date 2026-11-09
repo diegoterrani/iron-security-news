@@ -6,6 +6,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { inter } from "@/lib/fonts";
 import { Brand } from "@/components/Brand";
+import { getViewer } from "@/lib/admin/data";
 import "../iron.css";
 
 export const metadata: Metadata = {
@@ -45,7 +46,10 @@ const NAV: { title: string; items: NavItem[] }[] = [
   },
 ];
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
+const ROLE_LABEL = { admin: "Admin", editor: "Editor", viewer: "Leitor" } as const;
+
+export default async function AdminLayout({ children }: { children: ReactNode }) {
+  const viewer = await getViewer().catch(() => null);
   return (
     <html lang="pt-BR" className={inter.variable}>
       <body>
@@ -62,7 +66,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   {group.items.map(({ label, icon: Icon, href }) => (
                     <li key={label}>
                       {href ? (
-                        <a className="nav-item" href={href} aria-current="page">
+                        <a className="nav-item" href={href}>
                           <Icon className="icon" size={16} aria-hidden="true" />
                           {label}
                         </a>
@@ -70,7 +74,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                         <span className="nav-item" aria-disabled="true">
                           <Icon className="icon" size={16} aria-hidden="true" />
                           {label}
-                          <span className="nav-item__tag">Fase 1</span>
+                          <span className="nav-item__tag">Em breve</span>
                         </span>
                       )}
                     </li>
@@ -78,6 +82,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 </ul>
               </nav>
             ))}
+            {viewer && (
+              <div className="sidebar__user">
+                <span>{viewer.email}{viewer.role ? ` · ${ROLE_LABEL[viewer.role]}` : ""}</span>
+                <form action="/admin/logout" method="post">
+                  <button type="submit" className="button">Sair</button>
+                </form>
+              </div>
+            )}
           </aside>
           <div>{children}</div>
         </div>
