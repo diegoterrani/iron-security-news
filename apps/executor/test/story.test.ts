@@ -1,7 +1,8 @@
 import type { Article } from "@ironnews/shared";
 import { describe, expect, it } from "vitest";
 import { parseEpss, parseNvdCve, type Facts } from "../src/facts/enrich";
-import { coerceDerivatives, writerUserContent } from "../src/story/build";
+import { coerceDerivatives, derivativesParams, writerParams, writerUserContent } from "../src/story/build";
+import { triageParams } from "../src/triage/triage";
 import { extractNumbers, factGuard, numberCandidates } from "../src/story/factguard";
 import { renderPlaceholders } from "../src/story/placeholders";
 import { slugify } from "../src/story/slug";
@@ -118,5 +119,21 @@ describe("redação e derivados", () => {
     expect(slugify("Falha crítica no Windows: 1,5 mi afetados!")).toBe("falha-critica-no-windows-1-5-mi-afetados");
     expect(slugify("x".repeat(30) + " " + "y".repeat(60)).length).toBeLessThanOrEqual(80);
     expect(slugify("!!!")).toBe("noticia");
+  });
+});
+
+describe("formato de saída sem parse automático do SDK", () => {
+  // Com `parse`, stream().finalMessage() lança exceção quando o modelo passa de um limite do schema.
+  it("redator, derivados e triagem mandam só o JSON Schema", () => {
+    const a = { title: "t", meta_description: "m", tldr: "t", markdown: "x", tags: [] };
+    const formats = [
+      writerParams("claude-sonnet-5-5", "x").output_config?.format,
+      derivativesParams("claude-haiku-5-5", "pt", a).output_config?.format,
+      triageParams("claude-haiku-5-5", { id: "i", source_name: "s", title: "t", summary: null, content_excerpt: null, published_at: null }).output_config?.format,
+    ];
+    for (const f of formats) {
+      expect(f?.type).toBe("json_schema");
+      expect(Object.keys(f ?? {})).toEqual(["type", "schema"]);
+    }
   });
 });
