@@ -1,36 +1,11 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
-    "build": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "dist/**",
-        ".next/**",
-        "!.next/cache/**"
-      ]
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    },
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
+    "dev": { "cache": false, "persistent": true },
     "lint": {},
-    "typecheck": {
-      "dependsOn": [
-        "^build"
-      ]
-    },
-    "test": {
-      "dependsOn": [
-        "^build"
-      ]
-    },
-    "@ironnews/web#typecheck": {
-      "dependsOn": [
-        "^build",
-        "@ironnews/web#build"
-      ]
-    }
+    "typecheck": { "dependsOn": ["^build"] },
+    "@ironnews/web#typecheck": { "dependsOn": ["^build", "@ironnews/web#build"] },
+    "test": { "dependsOn": ["^build"] }
   }
 }
