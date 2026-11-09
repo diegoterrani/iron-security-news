@@ -13,6 +13,8 @@ import { createLogger } from "./logger";
 const config = loadConfig();
 const log = createLogger(config.LOG_LEVEL, config.GIT_SHA);
 const pool = createPool(config.DATABASE_URL);
+// Conexão ociosa derrubada pelo pooler: sem este handler o 'error' do Pool derruba o processo.
+pool.on("error", (err) => log.warn({ module: "db", err: err.message }, "idle client error"));
 
 const state: HealthState = {
   version: config.GIT_SHA,
@@ -25,10 +27,11 @@ const state: HealthState = {
 const server = startHealthServer(config.HEALTH_PORT, state);
 
 async function tick() {
-  state.dbOk = await pingDb(pool);
+  const dbErr = await pingDb(pool);
+  state.dbOk = dbErr === null;
   state.lastTickAt = Date.now();
-  if (!state.dbOk) {
-    log.error({ module: "scheduler" }, "database unreachable");
+  if (dbErr !== null) {
+    log.error({ module: "scheduler", err: dbErr }, "database unreachable");
     return;
   }
   log.debug({ module: "scheduler" }, "tick");
