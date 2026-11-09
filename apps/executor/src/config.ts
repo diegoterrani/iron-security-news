@@ -20,6 +20,15 @@ const EnvSchema = z.object({
   /** Embeddings (Workers AI bge-m3). Sem os dois, o agrupamento usa CVE + título. */
   CF_ACCOUNT_ID: z.string().min(1).optional(),
   CF_AI_TOKEN: z.string().min(1).optional(),
+  /** IA (§8.1). Sem ANTHROPIC_API_KEY a triagem fica desligada. */
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  LLM_MODEL_DEFAULT: z.string().default("claude-haiku-5-5"),
+  LLM_MODEL_FALLBACK: z.string().default("claude-sonnet-5-5"),
+  /** JSON {"modelo": {"input": US$/MTok, "output": US$/MTok}} que sobrescreve os preços padrão. */
+  LLM_PRICE_TABLE: z.string().optional(),
+  TRIAGE_ENABLED: z.enum(["0", "1"]).default("1").transform((v) => v === "1"),
+  /** Seleção diária cria stories; só faz sentido com a geração de conteúdo (etapa 3) no ar. */
+  SELECTION_ENABLED: z.enum(["0", "1"]).default("0").transform((v) => v === "1"),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
   PUBLISH_DRY_RUN: z
