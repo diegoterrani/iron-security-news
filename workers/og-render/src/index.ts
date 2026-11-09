@@ -9,7 +9,7 @@ const RenderRequest = z.object({
   template: z.enum(["cover", "carousel", "card-linkedin", "thumb-short"]),
   lang: z.enum(["pt", "en"]),
   slide: z.number().int().min(1).max(7).optional(),
-  data: z.record(z.unknown()),
+  data: z.record(z.string(), z.unknown()),
 });
 
 const json = (body: unknown, status = 200) =>
