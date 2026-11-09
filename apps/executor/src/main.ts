@@ -3,6 +3,8 @@ import { loadConfig } from "./config";
 import { createPool, pingDb } from "./db";
 import { startHealthServer, type HealthState } from "./health";
 import { createLogger } from "./logger";
+import { createEmbedder } from "./ingest/embeddings";
+import { ingestDue, purgeOldItems } from "./ingest/ingest";
 
 /**
  * Fase 0: esqueleto do executor.
@@ -47,13 +49,57 @@ async function heartbeat() {
   }
 }
 
-const jobs = [new Cron("* * * * *", { protect: true, timezone: "UTC" }, tick)];
+async function resolveBrandId(): Promise<string | null> {
+  try {
+    const { rows } = await pool.query<{ id: string }>("select id from brands where slug = $1", [config.BRAND_SLUG]);
+    return rows[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+let brandId: string | null = null;
+const embed = createEmbedder(config.CF_ACCOUNT_ID, config.CF_AI_TOKEN);
+
+/** Coleta (§4.2): job próprio, para não atrasar o tick de saúde. */
+async function ingest() {
+  if (!config.INGEST_ENABLED || !state.dbOk) return;
+  brandId ??= await resolveBrandId();
+  if (!brandId) {
+    log.error({ module: "ingest", brand: config.BRAND_SLUG }, "brand not found");
+    return;
+  }
+  try {
+    await ingestDue({ pool, log, brandId, embed, ctx: { nvdApiKey: config.NVD_API_KEY, githubToken: config.GITHUB_TOKEN } });
+  } catch (err) {
+    log.error({ module: "ingest", err: (err as Error).message }, "ingest cycle failed");
+  }
+}
+
+async function maintenance() {
+  if (!state.dbOk) return;
+  try {
+    const purged = await purgeOldItems(pool);
+    log.info({ module: "maintenance", purged }, "raw_items retention");
+  } catch (err) {
+    log.error({ module: "maintenance", err: (err as Error).message }, "maintenance failed");
+  }
+}
+
+const jobs = [
+  new Cron("* * * * *", { protect: true, timezone: "UTC" }, tick),
+  new Cron("30 * * * * *", { protect: true, timezone: "UTC" }, ingest),
+  new Cron("17 6 * * *", { protect: true, timezone: "UTC" }, maintenance),
+];
 const heartbeatTimer = setInterval(() => void heartbeat(), config.HEARTBEAT_INTERVAL_SEC * 1000);
 
 await tick();
 await heartbeat();
 log.info(
-  { module: "main", port: config.HEALTH_PORT, dryRun: config.PUBLISH_DRY_RUN, db: state.dbOk ? "ok" : "down" },
+  {
+    module: "main", port: config.HEALTH_PORT, dryRun: config.PUBLISH_DRY_RUN, db: state.dbOk ? "ok" : "down",
+    ingest: config.INGEST_ENABLED, embeddings: embed !== null,
+  },
   "executor started",
 );
 
