@@ -18,7 +18,9 @@ git fetch --quiet --depth 1 origin "$SHA"
 git checkout --quiet --force "$SHA"
 
 export IMAGE_TAG="$SHA"
-"${COMPOSE[@]}" pull executor
+# Imagem já presente (construída pelo pipeline.sh na própria VPS): não depende do GHCR.
+IMG=$("${COMPOSE[@]}" config --images executor)
+docker image inspect "$IMG" >/dev/null 2>&1 || "${COMPOSE[@]}" pull executor
 "${COMPOSE[@]}" up -d executor
 
 # Workers: wrangler roda aqui porque o token Cloudflare só existe na VPS.

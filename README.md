@@ -27,6 +27,19 @@ supabase start && supabase db reset    # banco local (requer Supabase CLI + Dock
 > Recomendação: clone o repositório fora do OneDrive (ex.: `C:\dev\ironnews`). O `node_modules` tem dezenas de
 > milhares de arquivos e a sincronização do OneDrive deixa a instalação lenta e instável.
 
+## Deploy sem GitHub Actions (`infra/vps/pipeline.sh`)
+Contorno para quando o GitHub Actions estiver indisponível. Roda na VPS, como root, e faz o mesmo que
+`ci.yml` + `deploy.yml`: CI em container → imagem do executor + Trivy → migrations pendentes (dry-run) →
+**confirmação** → migrations + `deploy.sh` (executor e Workers). Nada muda em produção antes da confirmação.
+O frontend continua com deploy automático pela Vercel.
+
+```bash
+/opt/ironnews/app/infra/vps/pipeline.sh                       # implanta origin/main
+/opt/ironnews/app/infra/vps/pipeline.sh <sha> --skip-migrations   # rollback
+```
+Requer `/etc/ironnews/migrate.env` (root, 600) com `SUPABASE_DB_URL` (pooler em modo sessão, porta 5432).
+Só aceita commits que estão na `main`.
+
 ## Estrutura
 ```
 apps/web          Next.js 15 (Vercel)
