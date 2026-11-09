@@ -13,6 +13,13 @@ const EnvSchema = z.object({
   /** URL de heartbeat (healthchecks.io ou Uptime Kuma push). Opcional. */
   HEARTBEAT_URL: z.string().url().optional(),
   HEARTBEAT_INTERVAL_SEC: z.coerce.number().int().min(30).default(60),
+  /** Coleta das fontes (Fase 1). "0" desliga sem precisar de deploy de código. */
+  INGEST_ENABLED: z.enum(["0", "1"]).default("1").transform((v) => v === "1"),
+  NVD_API_KEY: z.string().min(1).optional(),
+  GITHUB_TOKEN: z.string().min(1).optional(),
+  /** Embeddings (Workers AI bge-m3). Sem os dois, o agrupamento usa CVE + título. */
+  CF_ACCOUNT_ID: z.string().min(1).optional(),
+  CF_AI_TOKEN: z.string().min(1).optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
   PUBLISH_DRY_RUN: z
