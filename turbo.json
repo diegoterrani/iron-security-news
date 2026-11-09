@@ -5,6 +5,7 @@
     "dev": { "cache": false, "persistent": true },
     "lint": {},
     "typecheck": { "dependsOn": ["^build"] },
+    "@ironnews/web#typecheck": { "dependsOn": ["^build", "@ironnews/web#build"] },
     "test": { "dependsOn": ["^build"] }
   }
 }

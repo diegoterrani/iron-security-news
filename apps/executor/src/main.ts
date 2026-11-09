@@ -5,6 +5,10 @@ import { startHealthServer, type HealthState } from "./health";
 import { createLogger } from "./logger";
 import { createEmbedder } from "./ingest/embeddings";
 import { ingestDue, purgeOldItems } from "./ingest/ingest";
+import Anthropic from "@anthropic-ai/sdk";
+import { parsePriceTable } from "./llm/usage";
+import { pollTriageBatches, submitTriageBatch, type TriageDeps } from "./triage/run";
+import { runSelectionIfDue } from "./triage/selection";
 
 /**
  * Fase 0: esqueleto do executor.
@@ -76,6 +80,49 @@ async function ingest() {
   }
 }
 
+const prices = parsePriceTable(config.LLM_PRICE_TABLE);
+const anthropic = config.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: config.ANTHROPIC_API_KEY, maxRetries: 3 }) : null;
+const aiEnabled = anthropic !== null && config.TRIAGE_ENABLED;
+
+async function triageDeps(): Promise<TriageDeps | null> {
+  if (!aiEnabled || !state.dbOk) return null;
+  brandId ??= await resolveBrandId();
+  if (!brandId) return null;
+  return { pool, log, client: anthropic!, brandId, model: config.LLM_MODEL_DEFAULT, prices };
+}
+
+/** Triagem em lote a cada 30 min (RN-TRI01) e coleta dos lotes prontos a cada minuto. */
+async function triageSubmit() {
+  const deps = await triageDeps();
+  if (!deps) return;
+  try {
+    await submitTriageBatch(deps);
+  } catch (err) {
+    log.error({ module: "triage", err: (err as Error).message }, "triage submit failed");
+  }
+}
+
+async function triagePoll() {
+  const deps = await triageDeps();
+  if (!deps) return;
+  try {
+    await pollTriageBatches(deps);
+  } catch (err) {
+    log.error({ module: "triage", err: (err as Error).message }, "triage poll failed");
+  }
+}
+
+async function selection() {
+  if (!config.SELECTION_ENABLED) return;
+  const deps = await triageDeps();
+  if (!deps) return;
+  try {
+    await runSelectionIfDue(deps);
+  } catch (err) {
+    log.error({ module: "selection", err: (err as Error).message }, "selection failed");
+  }
+}
+
 async function maintenance() {
   if (!state.dbOk) return;
   try {
@@ -90,6 +137,9 @@ const jobs = [
   new Cron("* * * * *", { protect: true, timezone: "UTC" }, tick),
   new Cron("30 * * * * *", { protect: true, timezone: "UTC" }, ingest),
   new Cron("17 6 * * *", { protect: true, timezone: "UTC" }, maintenance),
+  new Cron("0 5,35 * * * *", { protect: true, timezone: "UTC" }, triageSubmit),
+  new Cron("45 * * * * *", { protect: true, timezone: "UTC" }, triagePoll),
+  new Cron("50 * * * * *", { protect: true, timezone: "UTC" }, selection),
 ];
 const heartbeatTimer = setInterval(() => void heartbeat(), config.HEARTBEAT_INTERVAL_SEC * 1000);
 
@@ -99,6 +149,7 @@ log.info(
   {
     module: "main", port: config.HEALTH_PORT, dryRun: config.PUBLISH_DRY_RUN, db: state.dbOk ? "ok" : "down",
     ingest: config.INGEST_ENABLED, embeddings: embed !== null,
+    triage: aiEnabled, selection: aiEnabled && config.SELECTION_ENABLED, model: config.LLM_MODEL_DEFAULT,
   },
   "executor started",
 );
