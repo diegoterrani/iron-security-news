@@ -28,7 +28,7 @@ export class Queue {
   async send<T>(queue: QueueName, payload: T, opts: { traceId: string; attempt?: number; delaySec?: number }) {
     const body: Envelope<T> = { v: 1, traceId: opts.traceId, attempt: opts.attempt ?? 1, payload };
     const { rows } = await this.pool.query<{ id: string }>(
-      "select pgmq.send($1, $2::jsonb, $3) as id",
+      "select pgmq.send($1::text, $2::jsonb, $3::integer) as id",
       [queue, JSON.stringify(body), opts.delaySec ?? 0],
     );
     return Number(rows[0]?.id);
@@ -36,14 +36,14 @@ export class Queue {
 
   async read<T>(queue: QueueName, visibilitySec = 300, qty = 5): Promise<QueueMessage<T>[]> {
     const { rows } = await this.pool.query<{ msg_id: string; read_ct: number; message: Envelope<T> }>(
-      "select msg_id, read_ct, message from pgmq.read($1, $2, $3)",
+      "select msg_id, read_ct, message from pgmq.read($1::text, $2::integer, $3::integer)",
       [queue, visibilitySec, qty],
     );
     return rows.map((r) => ({ msgId: Number(r.msg_id), readCt: r.read_ct, body: r.message }));
   }
 
   async ack(queue: QueueName, msgId: number) {
-    await this.pool.query("select pgmq.archive($1, $2::bigint)", [queue, msgId]);
+    await this.pool.query("select pgmq.archive($1::text, $2::bigint)", [queue, msgId]);
   }
 
   /** Reenfileira com backoff ou move para a DLQ após MAX_ATTEMPTS. Retorna o destino. */

@@ -1,5 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import Anthropic from "@anthropic-ai/sdk";
 import {
   ArticleSchema, DERIVATIVES_PROMPT_VERSION, DERIVATIVES_SYSTEM, DerivativesSchema, WRITER_PROMPT_VERSION, WRITER_SYSTEM,
   type Article, type Derivatives, type Lang,
@@ -8,6 +7,7 @@ import type { Pool } from "../db";
 import { enrichCves, type Facts } from "../facts/enrich";
 import { extractCves, truncate } from "../ingest/normalize";
 import type { Logger } from "../logger";
+import { jsonSchemaFormat } from "../llm/format";
 import { budgetStatus, recordUsage, type ModelPrice } from "../llm/usage";
 import { factGuard, type GuardIssue, type GuardSource } from "./factguard";
 import { renderPlaceholders } from "./placeholders";
@@ -75,7 +75,7 @@ export function writerParams(model: string, content: string): Anthropic.MessageC
     // PT + EN + raciocínio passam de 11 mil tokens; com streaming o limite alto não esbarra em timeout HTTP.
     max_tokens: 32000,
     system: [{ type: "text", text: WRITER_SYSTEM, cache_control: { type: "ephemeral" } }],
-    output_config: { effort: "medium", format: zodOutputFormat(ArticleSchema) },
+    output_config: { effort: "medium", format: jsonSchemaFormat(ArticleSchema) },
     messages: [{ role: "user", content }],
   };
 }
@@ -85,7 +85,7 @@ export function derivativesParams(model: string, lang: Lang, article: Article["p
     model,
     max_tokens: 8000,
     system: [{ type: "text", text: DERIVATIVES_SYSTEM, cache_control: { type: "ephemeral" } }],
-    output_config: { effort: "low", format: zodOutputFormat(DerivativesSchema) },
+    output_config: { effort: "low", format: jsonSchemaFormat(DerivativesSchema) },
     messages: [{ role: "user", content: `<article lang="${lang}">\n# ${article.title}\n\n${article.markdown}\n</article>` }],
   };
 }
@@ -202,7 +202,17 @@ export async function buildStory(deps: BuildDeps, storyId: string): Promise<"bui
   let issues: GuardIssue[] = [];
   const history: { model: string; issues: GuardIssue[] }[] = [];
   for (const model of attempts) {
-    const msg = await client.messages.stream(writerParams(model, writerUserContent(sources, facts, story, issues))).finalMessage();
+    let msg: Anthropic.Message;
+    try {
+      msg = await client.messages.stream(writerParams(model, writerUserContent(sources, facts, story, issues))).finalMessage();
+    } catch (err) {
+      // Requisição recusada pela API (400) vale como tentativa perdida; 429/5xx/rede sobem e a fila tenta de novo.
+      if (!(err instanceof Anthropic.BadRequestError)) throw err;
+      issues = [{ rule: "FG03", detail: `API recusou a chamada (${model}): ${err.message}`.slice(0, 300) }];
+      history.push({ model, issues });
+      log.warn({ module: "story", storyId, model, err: err.message }, "writer request rejected");
+      continue;
+    }
     await recordUsage(pool, deps.prices, { storyId, task: "write", model: msg.model, usage: msg.usage, batch: false });
     let candidate: Article;
     try {

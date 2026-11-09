@@ -1,8 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { TRIAGE_PROMPT_VERSION, TRIAGE_SYSTEM, TriageSchema, type Triage } from "@ironnews/shared";
 import type { Pool } from "../db";
 import { truncate } from "../ingest/normalize";
+import { jsonSchemaFormat } from "../llm/format";
 
 /** Item pronto para triagem (título/resumo/trecho já limpos na coleta). */
 export interface TriageItem {
@@ -37,7 +37,7 @@ export function triageParams(model: string, it: TriageItem): Anthropic.MessageCr
     max_tokens: 2000,
     system: [{ type: "text", text: TRIAGE_SYSTEM, cache_control: { type: "ephemeral" } }],
     // Classificação: esforço baixo basta e reduz tokens de raciocínio.
-    output_config: { effort: "low", format: zodOutputFormat(TriageSchema) },
+    output_config: { effort: "low", format: jsonSchemaFormat(TriageSchema) },
     messages: [{ role: "user", content: sourceBlock(it) }],
   };
 }
