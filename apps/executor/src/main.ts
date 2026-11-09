@@ -9,6 +9,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { parsePriceTable } from "./llm/usage";
 import { pollTriageBatches, submitTriageBatch, type TriageDeps } from "./triage/run";
 import { runSelectionIfDue } from "./triage/selection";
+import { Queue } from "./queue";
+import { consumeStoryBuild } from "./story/worker";
 
 /**
  * Fase 0: esqueleto do executor.
@@ -123,6 +125,22 @@ async function selection() {
   }
 }
 
+const queue = new Queue(pool);
+
+/** Geração de conteúdo (§9.5): consome a fila story_build alimentada pela seleção. */
+async function storyWorker() {
+  const deps = await triageDeps();
+  if (!deps) return;
+  try {
+    await consumeStoryBuild(
+      { ...deps, fallbackModel: config.LLM_MODEL_FALLBACK, nvdApiKey: config.NVD_API_KEY },
+      queue,
+    );
+  } catch (err) {
+    log.error({ module: "story", err: (err as Error).message }, "story worker failed");
+  }
+}
+
 async function maintenance() {
   if (!state.dbOk) return;
   try {
@@ -140,6 +158,7 @@ const jobs = [
   new Cron("0 5,35 * * * *", { protect: true, timezone: "UTC" }, triageSubmit),
   new Cron("45 * * * * *", { protect: true, timezone: "UTC" }, triagePoll),
   new Cron("50 * * * * *", { protect: true, timezone: "UTC" }, selection),
+  new Cron("*/20 * * * * *", { protect: true, timezone: "UTC" }, storyWorker),
 ];
 const heartbeatTimer = setInterval(() => void heartbeat(), config.HEARTBEAT_INTERVAL_SEC * 1000);
 
