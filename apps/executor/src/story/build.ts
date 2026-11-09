@@ -41,6 +41,13 @@ export interface BuildSource extends GuardSource {
 
 /** Story mais velha que isso sem conteúdo perdeu a atualidade. */
 const STALE_HOURS = 36;
+
+/** Idiomas válidos de settings.langs; aceita também o literal de array do Postgres por segurança. */
+export function parseLangs(raw: unknown): Lang[] {
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.replace(/[{}"\s]/g, "").split(",") : [];
+  const langs = list.filter((l): l is Lang => l === "pt" || l === "en");
+  return langs.length ? [...new Set(langs)] : ["pt", "en"];
+}
 const attr = (s: string) => s.replace(/["<>&]/g, " ").trim();
 
 // ---------------------------------------------------------------------------
@@ -241,8 +248,9 @@ export async function buildStory(deps: BuildDeps, storyId: string): Promise<"bui
     return "failed";
   }
   const passed = issues.length === 0;
-  const { rows: st } = await pool.query<{ langs: Lang[] }>("select langs from settings where brand_id = $1", [deps.brandId]);
-  const langs = (st[0]?.langs ?? ["pt", "en"]).filter((l): l is Lang => l === "pt" || l === "en");
+  // langs é lang[] (enum): o driver pg não converte arrays de enum e devolveria "{pt,en}"; ::text[] resolve.
+  const { rows: st } = await pool.query<{ langs: string[] }>("select langs::text[] as langs from settings where brand_id = $1", [deps.brandId]);
+  const langs = parseLangs(st[0]?.langs);
 
   // ---- derivados por idioma (falha num canal não impede a revisão do artigo)
   const derivatives: Partial<Record<Lang, Derivatives>> = {};

@@ -1,7 +1,7 @@
 import type { Article } from "@ironnews/shared";
 import { describe, expect, it } from "vitest";
 import { parseEpss, parseNvdCve, type Facts } from "../src/facts/enrich";
-import { coerceDerivatives, derivativesParams, writerParams, writerUserContent } from "../src/story/build";
+import { coerceDerivatives, derivativesParams, parseLangs, writerParams, writerUserContent } from "../src/story/build";
 import { triageParams } from "../src/triage/triage";
 import { extractNumbers, factGuard, numberCandidates } from "../src/story/factguard";
 import { renderPlaceholders } from "../src/story/placeholders";
@@ -135,5 +135,15 @@ describe("formato de saída sem parse automático do SDK", () => {
       expect(f?.type).toBe("json_schema");
       expect(Object.keys(f ?? {})).toEqual(["type", "schema"]);
     }
+  });
+});
+
+describe("settings.langs (enum lang[])", () => {
+  it("aceita array, literal do Postgres e cai no padrão", () => {
+    expect(parseLangs(["pt", "en"])).toEqual(["pt", "en"]);
+    expect(parseLangs("{pt,en}")).toEqual(["pt", "en"]);
+    expect(parseLangs("{en}")).toEqual(["en"]);
+    expect(parseLangs(null)).toEqual(["pt", "en"]);
+    expect(parseLangs(["xx"])).toEqual(["pt", "en"]);
   });
 });
