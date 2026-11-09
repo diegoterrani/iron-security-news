@@ -82,9 +82,19 @@ export async function pollTriageBatches(deps: TriageDeps): Promise<void> {
       }
       continue;
     }
-    const counts = { succeeded: 0, invalid: 0, retry: 0 };
+    const counts = { succeeded: 0, invalid: 0, retry: 0, skipped: 0 };
+    // Itens que já saíram de 'new' foram aplicados numa leitura anterior interrompida: não aplica nem cobra de novo.
+    const { rows: open } = await pool.query<{ id: string }>(
+      "select r.id from raw_items r join llm_batches b on r.id = any(b.item_ids) where b.id = $1 and r.status = 'new'",
+      [b.id],
+    );
+    const pending = new Set(open.map((x) => x.id));
     for await (const r of await client.messages.batches.results(b.id)) {
       const itemId = r.custom_id;
+      if (!pending.has(itemId)) {
+        counts.skipped++;
+        continue;
+      }
       switch (r.result.type) {
         case "succeeded": {
           const msg = r.result.message;
