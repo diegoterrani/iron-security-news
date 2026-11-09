@@ -22,8 +22,13 @@ export IMAGE_TAG="$SHA"
 "${COMPOSE[@]}" up -d executor
 
 # Workers: wrangler roda aqui porque o token Cloudflare só existe na VPS.
-"${COMPOSE[@]}" --profile deploy build deploy
-"${COMPOSE[@]}" --profile deploy run --rm deploy
+# Sem token em deploy.env, pula os Workers em vez de falhar o deploy do executor.
+if grep -qE '^CLOUDFLARE_API_TOKEN=.+' /etc/ironnews/deploy.env 2>/dev/null; then
+  "${COMPOSE[@]}" --profile deploy build deploy
+  "${COMPOSE[@]}" --profile deploy run --rm deploy
+else
+  echo "aviso: CLOUDFLARE_API_TOKEN ausente em /etc/ironnews/deploy.env; Workers não publicados" >&2
+fi
 
 # Smoke test: espera o healthcheck do container ficar healthy (até 2 min).
 for _ in $(seq 1 24); do

@@ -12,11 +12,13 @@ export function createPool(databaseUrl: string) {
 
 export type Pool = pg.Pool;
 
-export async function pingDb(pool: Pool): Promise<boolean> {
+/** Retorna null se o banco respondeu, ou a mensagem do erro (para log). */
+export async function pingDb(pool: Pool): Promise<string | null> {
   try {
     await pool.query("select 1");
-    return true;
-  } catch {
-    return false;
+    return null;
+  } catch (err) {
+    const e = err as Error & { code?: string };
+    return e.code ? `${e.code}: ${e.message}` : e.message;
   }
 }

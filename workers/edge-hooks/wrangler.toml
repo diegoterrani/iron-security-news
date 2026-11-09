@@ -3,8 +3,8 @@ main = "src/index.ts"
 compatibility_date = "2025-10-01"
 workers_dev = false
 
-# Ajustar <dominio> quando o domínio for definido.
-# routes = [{ pattern = "hooks.<dominio>/*", zone_name = "<dominio>" }]
+# Custom domain: o wrangler cria o registro DNS na zona iron-security.com.
+routes = [{ pattern = "hooks.iron-security.com", custom_domain = true }]
 
 [observability]
 enabled = true
