@@ -22,11 +22,15 @@ export type Category = (typeof CATEGORIES)[number];
 export const QUEUES = ["triage", "story_build", "render", "video", "video_events", "publish", "dlq"] as const;
 export type QueueName = (typeof QUEUES)[number];
 
-/** Cores fixas do badge de severidade (RN-RND01), alinhadas ao Iron Security Design System. */
+/**
+ * Escala de risco do Brand Kit oficial (design-system.md): preenchimento do nível. O texto usa a "tinta"
+ * correspondente (packages/templates/src/tokens.ts) e sempre traz a palavra do nível. Substitui a
+ * paleta neon da especificação original (RN-RND01), que o kit proíbe.
+ */
 export const SEVERITY_COLORS: Record<Severity, string> = {
-  critical: "#FF3B45",
-  high: "#FF7A1A",
-  medium: "#FACC15",
-  low: "#22C55E",
-  info: "#00D9FF",
+  critical: "#c2413a",
+  high: "#b8662a",
+  medium: "#a8862a",
+  low: "#4f7895",
+  info: "#4f6b74",
 };
