@@ -11,7 +11,7 @@ import { pollTriageBatches, submitTriageBatch, type TriageDeps } from "./triage/
 import { runSelectionIfDue } from "./triage/selection";
 import { Queue } from "./queue";
 import { consumeStoryBuild } from "./story/worker";
-import { publishDueBlogPosts } from "./publish/blog";
+import { publishDueBlogPosts, revalidate } from "./publish/blog";
 import { consumeRender } from "./render/worker";
 
 /**
@@ -163,7 +163,11 @@ const storage = config.SUPABASE_URL && config.SUPABASE_SERVICE_ROLE_KEY
 async function renderWorker() {
   if (!storage || !state.dbOk) return;
   try {
-    await consumeRender({ pool, log, storage }, queue);
+    await consumeRender({
+      pool, log, storage,
+      revalidate: (tags) => revalidate(
+        { pool, log, siteUrl: config.SITE_URL, revalidateUrl: config.REVALIDATE_URL, revalidateSecret: config.REVALIDATE_SECRET }, tags),
+    }, queue);
   } catch (err) {
     log.error({ module: "render", err: (err as Error).message }, "render worker failed");
   }

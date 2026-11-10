@@ -5,7 +5,7 @@ import Markdown from "react-markdown";
 import { ArrowLeft } from "lucide-react";
 import type { Lang } from "@ironnews/shared";
 import { SeverityBadge } from "@/components/SeverityBadge";
-import { fmtDate, getAlternates, getArticle, getCoverUrl } from "@/lib/blog";
+import { fmtDate, getAlternates, getArticle } from "@/lib/blog";
 import { HTML_LANG, dict, isLang } from "@/lib/i18n";
 import { withoutTldrSection } from "@/lib/markdown";
 import { siteUrl } from "@/lib/supabase/env";
@@ -32,7 +32,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const data = await load(lang, slug);
   if (!data) return {};
   const { article: a, alternates } = data;
-  const coverUrl = await getCoverUrl(a.id, a.lang).catch(() => null);
+  const coverUrl = a.cover_url;
   const images = coverUrl ? [{ url: coverUrl, width: 1200, height: 630, alt: a.title }] : undefined;
   const languages = Object.fromEntries(
     Object.entries(alternates).map(([l, s]) => [HTML_LANG[l as keyof typeof HTML_LANG], `/${l}/${s}`]),
@@ -101,6 +101,13 @@ export default async function ArticlePage({ params }: Params) {
             )}
           </div>
         </header>
+        {a.cover_url && (
+          <figure className="article__cover">
+            {/* Criativo `cover` do idioma da página, gerado junto com a story (o texto já está no título acima). */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={a.cover_url} alt="" width={1200} height={630} fetchPriority="high" decoding="async" />
+          </figure>
+        )}
         <p className="article__tldr"><strong>TL;DR</strong> {a.tldr}</p>
         <div className="prose article__body"><Md text={withoutTldrSection(a.markdown)} /></div>
       </article>
