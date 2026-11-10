@@ -38,8 +38,11 @@ export async function imagePrompt(
   const text = msg.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "";
   const parsed = PromptSchema.safeParse(JSON.parse(text || "{}"));
   if (!parsed.success) throw new Error(`prompt de imagem inválido (${msg.stop_reason})`);
-  // Reforça as proibições do kit mesmo que o modelo as omita.
-  return `${parsed.data.prompt.trim()}. Dark green-black palette, muted moss green highlights, no text, no letters, no logos, no people.`;
+  // Reforça as proibições do kit só se o modelo as omitiu (sem repetir o sufixo).
+  const base = parsed.data.prompt.trim().replace(/\.*$/, "");
+  return /no text/i.test(base) && /no people/i.test(base)
+    ? `${base}.`
+    : `${base}. Dark green-black palette, muted moss green highlights, no text, no letters, no logos, no people.`;
 }
 
 /** FLUX schnell no Workers AI: devolve JPEG 1024×1024. */
