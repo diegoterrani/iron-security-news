@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { LANGS } from "@ironnews/shared";
 import { HTML_LANG, dict, isLang } from "@/lib/i18n";
-import { inter } from "@/lib/fonts";
+import { fontVars } from "@/lib/fonts";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import "../iron.css";
@@ -14,7 +14,7 @@ export function generateStaticParams() {
   return LANGS.map((lang) => ({ lang }));
 }
 
-export const viewport: Viewport = { themeColor: "#050607", colorScheme: "dark" };
+export const viewport: Viewport = { themeColor: "#090f0d", colorScheme: "dark" };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { lang } = await params;
@@ -32,7 +32,7 @@ export default async function SiteLayout({ children, params }: Params & { childr
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   return (
-    <html lang={HTML_LANG[lang]} className={inter.variable}>
+    <html lang={HTML_LANG[lang]} className={fontVars}>
       <body>
         <a className="skip-link" href="#content">
           {lang === "pt" ? "Pular para o conteúdo" : "Skip to content"}

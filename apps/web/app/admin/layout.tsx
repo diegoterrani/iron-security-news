@@ -4,7 +4,7 @@ import {
   CalendarClock, CheckCheck, Coins, Inbox, KeyRound, Plug, Rss, Users, Video, Workflow,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { inter } from "@/lib/fonts";
+import { fontVars } from "@/lib/fonts";
 import { Brand } from "@/components/Brand";
 import { getViewer } from "@/lib/admin/data";
 import "../iron.css";
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export const viewport: Viewport = { themeColor: "#050607", colorScheme: "dark" };
+export const viewport: Viewport = { themeColor: "#090f0d", colorScheme: "dark" };
 
 type NavItem = { label: string; icon: LucideIcon; href?: string };
 
@@ -51,7 +51,7 @@ const ROLE_LABEL = { admin: "Admin", editor: "Editor", viewer: "Leitor" } as con
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const viewer = await getViewer().catch(() => null);
   return (
-    <html lang="pt-BR" className={inter.variable}>
+    <html lang="pt-BR" className={fontVars}>
       <body>
         <a className="skip-link" href="#content">Pular para o conteúdo</a>
         <div className="shell">
