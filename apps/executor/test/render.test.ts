@@ -84,3 +84,21 @@ describe("fundo por IA", () => {
     await expect(generateImage({ accountId: "acc", token: "t", fetchImpl: fail }, "x")).rejects.toThrow(/Authentication error/);
   });
 });
+
+describe("fluxPrompt (FLUX não entende negação)", () => {
+  it("tira siglas, negações e menções a escrita/pessoas; fecha com sufixo positivo", async () => {
+    const { fluxPrompt } = await import("../src/render/background");
+    const out = fluxPrompt(
+      "Cinematic photograph of a dim server room with rows of GPU server racks on the right side, one open rack door, " +
+        "empty dark left third for text, dark green-black palette, no text, no letters, no logos, no people.",
+    );
+    expect(out).not.toMatch(/\bGPU\b|\btext\b|\bno\b|letters|logos|people/i);
+    expect(out).toMatch(/^Cinematic photograph of a dim server room with rows of server racks on the right side, one open rack door/);
+    expect(out).toMatch(/blank unmarked surfaces/);
+  });
+
+  it("usa um prompt neutro se nada sobrar", async () => {
+    const { fluxPrompt } = await import("../src/render/background");
+    expect(fluxPrompt("no text, no people")).toMatch(/^Cinematic photograph of a dim server room/);
+  });
+});

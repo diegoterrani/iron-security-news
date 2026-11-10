@@ -38,11 +38,29 @@ export async function imagePrompt(
   const text = msg.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "";
   const parsed = PromptSchema.safeParse(JSON.parse(text || "{}"));
   if (!parsed.success) throw new Error(`prompt de imagem inválido (${msg.stop_reason})`);
-  // Reforça as proibições do kit só se o modelo as omitiu (sem repetir o sufixo).
-  const base = parsed.data.prompt.trim().replace(/\.*$/, "");
-  return /no text/i.test(base) && /no people/i.test(base)
-    ? `${base}.`
-    : `${base}. Dark green-black palette, muted moss green highlights, no text, no letters, no logos, no people.`;
+  return fluxPrompt(parsed.data.prompt);
+}
+
+const NEGATION = /\b(no|not|without|avoid|free of)\b/i;
+const WRITING = /\b(text|texts|letters?|words?|labels?|labell?ed|signs?|signage|logos?|screens?|displays?|code|numbers?|numerals?|typography|captions?|writing|written|font)\b/i;
+const PEOPLE = /\b(people|person|persons|faces?|humans?|hands?|hacker)\b/i;
+const SUFFIX =
+  "Empty dark negative space on the left, dark green-black palette, muted moss green highlights, blank unmarked surfaces, minimalist, photorealistic.";
+
+/**
+ * Prompt final do FLUX. O schnell não entende negação e desenha qualquer palavra ligada a escrita,
+ * então tiramos cláusulas negativas, cláusulas que citam escrita/pessoas e siglas (GPU, SSH…),
+ * e fechamos com um sufixo só de termos positivos do Brand Kit.
+ */
+export function fluxPrompt(raw: string): string {
+  const clauses = raw
+    .split(/[,.;:]/)
+    .map((c) => c.trim())
+    .filter((c) => c && !NEGATION.test(c) && !WRITING.test(c) && !PEOPLE.test(c))
+    .map((c) => c.replace(/\b[A-Z][A-Z0-9-]+\b/g, "").replace(/\s{2,}/g, " ").trim())
+    .filter((c) => c.length > 2);
+  const base = clauses.length ? clauses.join(", ") : "Cinematic photograph of a dim server room with unmarked metal racks on the right";
+  return `${base}. ${SUFFIX}`;
 }
 
 /** FLUX schnell no Workers AI: devolve JPEG 1024×1024. */
