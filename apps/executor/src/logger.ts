@@ -9,7 +9,7 @@ export function createLogger(level: string, version: string) {
     redact: {
       paths: [
         "*.access_token", "*.refresh_token", "*.authorization", "*.Authorization", "*.apiKey",
-        "*.password", "*.email", "headers.cookie", "config.DATABASE_URL", "DATABASE_URL",
+        "*.password", "*.email", "*.serviceKey", "*.apikey", "*.SUPABASE_SERVICE_ROLE_KEY", "headers.cookie", "config.DATABASE_URL", "DATABASE_URL",
       ],
       censor: "[redacted]",
     },

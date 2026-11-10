@@ -29,6 +29,9 @@ const EnvSchema = z.object({
   TRIAGE_ENABLED: z.enum(["0", "1"]).default("1").transform((v) => v === "1"),
   /** Seleção diária cria stories; só faz sentido com a geração de conteúdo (etapa 3) no ar. */
   SELECTION_ENABLED: z.enum(["0", "1"]).default("0").transform((v) => v === "1"),
+  /** Storage do Supabase para os criativos (bucket `media`). Sem os dois, a renderização fica desligada. */
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
   /** Site público e revalidação das páginas após publicar (§5.5). */
   SITE_URL: z.string().url().default("https://news.iron-security.com").transform((u) => u.replace(/\/+$/, "")),
   REVALIDATE_URL: z.string().url().optional(),

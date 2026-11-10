@@ -276,6 +276,10 @@ export async function buildStory(deps: BuildDeps, storyId: string): Promise<"bui
   }
 
   await saveContents(pool, { storyId, article, articleModel, passed, issues, history, facts, langs, derivatives, derivErrors });
+  // Criativos (§4.7) saem em seguida, pela fila `render`, para a story já chegar à revisão com as imagens.
+  await pool.query("select pgmq.send('render'::text, $1::jsonb, 0::integer)", [
+    JSON.stringify({ v: 1, traceId: storyId, attempt: 1, payload: { story_id: storyId } }),
+  ]);
   log.info({ module: "story", storyId, factGuard: passed, attempts: history.length, langs, derivErrors }, "story built");
   return "built";
 }

@@ -7,6 +7,6 @@ export default defineConfig({
   platform: "node",
   clean: true,
   sourcemap: true,
-  // @ironnews/shared é TS-fonte no monorepo: vai embutido no bundle.
-  noExternal: ["@ironnews/shared"],
+  // @ironnews/shared e @ironnews/templates são TS-fonte no monorepo: vão embutidos no bundle.
+  noExternal: ["@ironnews/shared", "@ironnews/templates"],
 });
