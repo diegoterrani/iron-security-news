@@ -2,16 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ExternalLink } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Download, ExternalLink } from "lucide-react";
 import { SeverityBadge } from "@/components/SeverityBadge";
-import { canEdit, getStory, getViewer, type ContentRow } from "@/lib/admin/data";
+import { canEdit, getAssets, getStory, getViewer, type AssetRow, type ContentRow } from "@/lib/admin/data";
 import { CATEGORY_LABEL, CHANNEL_LABEL, SEVERITY_LABEL, STATUS_LABEL, fmtDateTime } from "@/lib/admin/labels";
+import { CopyButton } from "./CopyButton";
 import { EditForm, ReviewActions } from "./ReviewForms";
 
 export const metadata: Metadata = { title: "Story" };
 export const dynamic = "force-dynamic";
 
 const TABS = [
+  { key: "criativos", label: "Criativos" },
   { key: "pt", label: "Artigo PT" },
   { key: "en", label: "Artigo EN" },
   { key: "instagram", label: "Instagram" },
@@ -59,7 +61,10 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
   const fg = story.fact_guard;
 
   let body: React.ReactNode = null;
-  if (tab === "pt" || tab === "en") {
+  if (tab === "criativos") {
+    const assets = await getAssets(story.id);
+    body = <Creatives assets={assets} find={find} />;
+  } else if (tab === "pt" || tab === "en") {
     const a = find("blog", tab);
     body = !a ? <p className="section-hint">Sem artigo neste idioma.</p> : (
       <>
@@ -178,5 +183,70 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
         <section className="panel">{body}</section>
       </main>
     </>
+  );
+}
+
+const fileName = (a: AssetRow) => `iron-${a.channel}-${a.lang}-${a.kind}-${a.position}.png`;
+
+function Thumb({ a, width }: { a: AssetRow; width: number }) {
+  if (!a.public_url) return null;
+  return (
+    <figure className="creative">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={a.public_url} alt={`${a.channel} ${a.kind} ${a.position}`} width={width} height={Math.round(width * ((a.height ?? 1) / (a.width ?? 1)))} loading="lazy" />
+      <a className="creative__dl" href={a.public_url} download={fileName(a)} target="_blank" rel="noopener noreferrer">
+        <Download className="icon" size={14} aria-hidden="true" /> {a.width}×{a.height}
+      </a>
+    </figure>
+  );
+}
+
+/** Pacote para download (§4.10 modo manual): imagens + legendas prontas, por rede e idioma. */
+function Creatives({ assets, find }: { assets: AssetRow[]; find: (channel: string, lang: string) => ContentRow | undefined }) {
+  if (assets.length === 0) {
+    return <p className="section-hint">Os criativos ainda não foram gerados. Eles saem em até 1 minuto depois que a story fica pronta ou um texto é editado.</p>;
+  }
+  const text = (c: ContentRow | undefined, field: string) => (c && typeof c.body[field] === "string" ? (c.body[field] as string) : "");
+  const tags = (c: ContentRow | undefined) => (c && Array.isArray(c.body.hashtags) ? (c.body.hashtags as string[]).join(" ") : "");
+  return (
+    <div className="stack">
+      {(["pt", "en"] as const).map((lang) => {
+        const of = (channel: string, kind: string) => assets.filter((a) => a.lang === lang && a.channel === channel && a.kind === kind);
+        const ig = of("instagram", "carousel_slide");
+        if (!assets.some((a) => a.lang === lang)) return null;
+        const igCaption = [text(find("instagram", lang), "caption"), tags(find("instagram", lang))].filter(Boolean).join("\n\n");
+        const liText = [text(find("linkedin", lang), "text"), tags(find("linkedin", lang))].filter(Boolean).join("\n\n");
+        const fbText = text(find("facebook", lang), "text");
+        return (
+          <section key={lang} className="channel-block" aria-label={`Criativos ${lang.toUpperCase()}`}>
+            <h2 className="section-title">{lang === "pt" ? "Português" : "English"}</h2>
+            {ig.length > 0 && (
+              <div className="creative-group">
+                <h3 className="section-title">Instagram · carrossel ({ig.length} slides)</h3>
+                <div className="creative-row">{ig.map((a) => <Thumb key={a.position} a={a} width={180} />)}</div>
+                {igCaption && <><p className="pre-wrap creative-text">{igCaption}</p><CopyButton text={igCaption} label="Copiar legenda" /></>}
+              </div>
+            )}
+            {of("linkedin", "card").map((a) => (
+              <div key="li" className="creative-group">
+                <h3 className="section-title">LinkedIn · card</h3>
+                <Thumb a={a} width={420} />
+                {liText && <><p className="pre-wrap creative-text">{liText}</p><CopyButton text={liText} label="Copiar texto" /></>}
+              </div>
+            ))}
+            {fbText && ig[0] && (
+              <div className="creative-group">
+                <h3 className="section-title">Facebook · imagem do 1º slide + texto</h3>
+                <p className="pre-wrap creative-text">{fbText}</p><CopyButton text={fbText} label="Copiar texto" />
+              </div>
+            )}
+            <div className="creative-row">
+              {of("blog", "cover").map((a) => <div key="cover" className="creative-group"><h3 className="section-title">Capa do blog / compartilhamento</h3><Thumb a={a} width={360} /></div>)}
+              {of("youtube", "thumbnail").map((a) => <div key="yt" className="creative-group"><h3 className="section-title">Capa do Short</h3><Thumb a={a} width={150} /></div>)}
+            </div>
+          </section>
+        );
+      })}
+    </div>
   );
 }

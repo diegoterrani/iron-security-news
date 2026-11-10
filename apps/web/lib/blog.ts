@@ -82,3 +82,11 @@ export async function listAllForSitemap(): Promise<{ lang: Lang; slug: string; p
 
 export const fmtDate = (iso: string, lang: Lang) =>
   new Date(iso).toLocaleDateString(lang === "pt" ? "pt-BR" : "en-US", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "long", year: "numeric" });
+
+/** Capa do artigo (template `cover`, 1200×630) para Open Graph; o RLS só expõe capas de stories publicadas. */
+export async function getCoverUrl(id: string, lang: Lang): Promise<string | null> {
+  const { data } = await publicClient([]).from("assets").select("public_url")
+    .eq("story_id", id).eq("lang", lang).eq("kind", "cover").eq("status", "ready")
+    .order("content_version", { ascending: false }).limit(1).maybeSingle();
+  return (data?.public_url as string | undefined) ?? null;
+}
