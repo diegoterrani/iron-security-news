@@ -147,3 +147,13 @@ describe("settings.langs (enum lang[])", () => {
     expect(parseLangs(["xx"])).toEqual(["pt", "en"]);
   });
 });
+
+describe("derivados: 2ª tentativa recebe o motivo da recusa", () => {
+  it("anexa o erro de validação ao pedido", () => {
+    const a = { title: "t", meta_description: "m", tldr: "t", markdown: "x", tags: [] };
+    const first = JSON.stringify(derivativesParams("claude-haiku-5-5", "en", a).messages);
+    const second = JSON.stringify(derivativesParams("claude-haiku-5-5", "en", a, "facebook.text: Too big: expected string to have <=700 characters").messages);
+    expect(first).not.toContain("recusada");
+    expect(second).toContain("<=700");
+  });
+});

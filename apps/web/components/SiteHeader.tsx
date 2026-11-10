@@ -9,9 +9,9 @@ export function SiteHeader({ lang }: { lang: Lang }) {
       <div className="site-header__inner">
         <Brand href={`/${lang}`} byline={t.byline} />
         <nav className="site-nav" aria-label={lang === "pt" ? "Principal" : "Main"}>
-          <a className="site-nav__link" href="#latest">{t.nav.latest}</a>
-          <a className="site-nav__link" href="#coverage">{t.nav.coverage}</a>
-          <a className="site-nav__link" href="#method">{t.nav.method}</a>
+          <a className="site-nav__link" href={`/${lang}#latest`}>{t.nav.latest}</a>
+          <a className="site-nav__link" href={`/${lang}#coverage`}>{t.nav.coverage}</a>
+          <a className="site-nav__link" href={`/${lang}#method`}>{t.nav.method}</a>
         </nav>
         <nav className="segmented" aria-label={t.nav.language}>
           {LANGS.map((l) => (

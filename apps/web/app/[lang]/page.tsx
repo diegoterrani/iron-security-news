@@ -2,11 +2,16 @@ import { notFound } from "next/navigation";
 import { CATEGORIES, SEVERITIES } from "@ironnews/shared";
 import { Database, Languages, Radar, Radio, ShieldCheck, UserCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
 import { dict, isLang } from "@/lib/i18n";
 import { SeverityBadge } from "@/components/SeverityBadge";
+import { fmtDate, listArticles, type ArticleSummary } from "@/lib/blog";
 
-/** Fontes cadastradas em supabase/seed.sql. Passa a vir do banco quando o blog ler do Supabase (Fase 1). */
+/** Fontes cadastradas em supabase/seed.sql. */
 const CURATED_SOURCES = 21;
+
+/** ISR: o executor invalida a tag "articles" ao publicar; sem isso, a página se renova em 5 min. */
+export const revalidate = 300;
 
 type Metric = { tone: string; icon: LucideIcon; label: string; value: string; hint: string };
 
@@ -14,6 +19,12 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const t = dict[lang];
+  let articles: ArticleSummary[] = [];
+  try {
+    articles = await listArticles(lang);
+  } catch {
+    // Banco indisponível no build/render: mostra o estado vazio em vez de quebrar a home.
+  }
 
   const metrics: Metric[] = [
     { tone: "cyan", icon: Radar, label: t.metrics.sources.label, value: String(CURATED_SOURCES), hint: t.metrics.sources.hint },
@@ -56,13 +67,29 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
             <h2 id="latest-title" className="section-title">{t.feed.title}</h2>
             <span className="section-hint">{t.feed.hint}</span>
           </div>
-          <div className="empty">
-            <span className="empty__icon" aria-hidden="true">
-              <ShieldCheck className="icon" size={22} />
-            </span>
-            <p className="empty__title">{t.feed.emptyTitle}</p>
-            <p className="empty__text">{t.feed.emptyText}</p>
-          </div>
+          {articles.length === 0 ? (
+            <div className="empty">
+              <span className="empty__icon" aria-hidden="true">
+                <ShieldCheck className="icon" size={22} />
+              </span>
+              <p className="empty__title">{t.feed.emptyTitle}</p>
+              <p className="empty__text">{t.feed.emptyText}</p>
+            </div>
+          ) : (
+            <ul className="article-list">
+              {articles.map((a) => (
+                <li key={a.id} className="article-item">
+                  <div className="article-item__meta">
+                    <SeverityBadge severity={a.severity} label={t.severity.labels[a.severity]} />
+                    <span className="article-item__kicker">{t.coverage.categories[a.category as keyof typeof t.coverage.categories] ?? a.category}</span>
+                    <time dateTime={a.published_at}>{fmtDate(a.published_at, lang)}</time>
+                  </div>
+                  <h3 className="article-item__title"><Link href={`/${lang}/${a.slug}`}>{a.title}</Link></h3>
+                  <p className="article-item__tldr">{a.tldr}</p>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <div className="stack">
