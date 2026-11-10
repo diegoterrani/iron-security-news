@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/main.ts", "src/healthcheck.ts", "src/test-sources.ts"],
+  entry: ["src/main.ts", "src/healthcheck.ts", "src/test-sources.ts", "src/regen-derivatives.ts"],
   format: ["esm"],
   target: "node22",
   platform: "node",

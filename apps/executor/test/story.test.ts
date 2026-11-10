@@ -1,7 +1,7 @@
 import type { Article } from "@ironnews/shared";
 import { describe, expect, it } from "vitest";
 import { parseEpss, parseNvdCve, type Facts } from "../src/facts/enrich";
-import { coerceDerivatives, derivativesParams, parseLangs, writerParams, writerUserContent } from "../src/story/build";
+import { coerceDerivatives, derivativesParams, fitSentences, parseLangs, writerParams, writerUserContent } from "../src/story/build";
 import { triageParams } from "../src/triage/triage";
 import { extractNumbers, factGuard, numberCandidates } from "../src/story/factguard";
 import { renderPlaceholders } from "../src/story/placeholders";
@@ -155,5 +155,30 @@ describe("derivados: 2ª tentativa recebe o motivo da recusa", () => {
     const second = JSON.stringify(derivativesParams("claude-haiku-5-5", "en", a, "facebook.text: Too big: expected string to have <=700 characters").messages);
     expect(first).not.toContain("recusada");
     expect(second).toContain("<=700");
+  });
+});
+
+describe("texto longo demais não derruba o pacote do idioma", () => {
+  it("fitSentences corta no fim da última frase que cabe", () => {
+    const frases = Array.from({ length: 12 }, (_, i) => `Esta é a frase ${i} do post, com algum conteúdo.`).join(" ");
+    const out = fitSentences(frases, 300);
+    expect(out.length).toBeLessThanOrEqual(300);
+    expect(out.endsWith("conteúdo.")).toBe(true);
+    expect(fitSentences("curto", 700)).toBe("curto");
+  });
+  it("se a única frase que cabe é curta demais (< metade), corta por palavra em vez de esvaziar o texto", () => {
+    const t = "Curta. " + "palavra ".repeat(120);
+    const out = fitSentences(t, 300);
+    expect(out.length).toBeGreaterThan(150);
+    expect(out.length).toBeLessThanOrEqual(300);
+  });
+  it("Facebook com 900 caracteres vira ≤ 700 e o resto do pacote passa", () => {
+    const fb = Array.from({ length: 30 }, (_, i) => `Frase número ${i} sobre a falha.`).join(" ");
+    const d = coerceDerivatives({ facebook: { text: fb }, linkedin: { text: "x".repeat(1600), hashtags: [] }, youtube: { script: "y".repeat(1200) } }) as any;
+    expect(fb.length).toBeGreaterThan(700);
+    expect(d.facebook.text.length).toBeLessThanOrEqual(700);
+    expect(d.facebook.text.endsWith(".")).toBe(true);
+    expect(d.linkedin.text.length).toBeLessThanOrEqual(1500);
+    expect(d.youtube.script.length).toBeLessThanOrEqual(1000);
   });
 });
