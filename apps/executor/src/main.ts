@@ -12,6 +12,7 @@ import { runSelectionIfDue } from "./triage/selection";
 import { Queue } from "./queue";
 import { consumeStoryBuild } from "./story/worker";
 import { publishDueBlogPosts } from "./publish/blog";
+import { consumeRender } from "./render/worker";
 
 /**
  * Fase 0: esqueleto do executor.
@@ -154,6 +155,20 @@ async function publishBlog() {
   }
 }
 
+const storage = config.SUPABASE_URL && config.SUPABASE_SERVICE_ROLE_KEY
+  ? { supabaseUrl: config.SUPABASE_URL, serviceKey: config.SUPABASE_SERVICE_ROLE_KEY }
+  : null;
+
+/** Criativos (§4.7): fila `render`, alimentada quando a story fica pronta ou um texto é editado. */
+async function renderWorker() {
+  if (!storage || !state.dbOk) return;
+  try {
+    await consumeRender({ pool, log, storage }, queue);
+  } catch (err) {
+    log.error({ module: "render", err: (err as Error).message }, "render worker failed");
+  }
+}
+
 async function maintenance() {
   if (!state.dbOk) return;
   try {
@@ -173,6 +188,7 @@ const jobs = [
   new Cron("50 * * * * *", { protect: true, timezone: "UTC" }, selection),
   new Cron("*/20 * * * * *", { protect: true, timezone: "UTC" }, storyWorker),
   new Cron("10 * * * * *", { protect: true, timezone: "UTC" }, publishBlog),
+  new Cron("5,25,45 * * * * *", { protect: true, timezone: "UTC" }, renderWorker),
 ];
 const heartbeatTimer = setInterval(() => void heartbeat(), config.HEARTBEAT_INTERVAL_SEC * 1000);
 
@@ -182,7 +198,7 @@ log.info(
   {
     module: "main", port: config.HEALTH_PORT, dryRun: config.PUBLISH_DRY_RUN, db: state.dbOk ? "ok" : "down",
     ingest: config.INGEST_ENABLED, embeddings: embed !== null,
-    triage: aiEnabled, selection: aiEnabled && config.SELECTION_ENABLED, model: config.LLM_MODEL_DEFAULT,
+    triage: aiEnabled, selection: aiEnabled && config.SELECTION_ENABLED, model: config.LLM_MODEL_DEFAULT, render: storage !== null,
   },
   "executor started",
 );

@@ -5,8 +5,9 @@ import Markdown from "react-markdown";
 import { ArrowLeft } from "lucide-react";
 import type { Lang } from "@ironnews/shared";
 import { SeverityBadge } from "@/components/SeverityBadge";
-import { fmtDate, getAlternates, getArticle } from "@/lib/blog";
+import { fmtDate, getAlternates, getArticle, getCoverUrl } from "@/lib/blog";
 import { HTML_LANG, dict, isLang } from "@/lib/i18n";
+import { withoutTldrSection } from "@/lib/markdown";
 import { siteUrl } from "@/lib/supabase/env";
 
 /** ISR: o executor invalida "article:<slug>" ao publicar ou editar; sem isso, renova em 5 min. */
@@ -31,6 +32,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const data = await load(lang, slug);
   if (!data) return {};
   const { article: a, alternates } = data;
+  const coverUrl = await getCoverUrl(a.id, a.lang).catch(() => null);
+  const images = coverUrl ? [{ url: coverUrl, width: 1200, height: 630, alt: a.title }] : undefined;
   const languages = Object.fromEntries(
     Object.entries(alternates).map(([l, s]) => [HTML_LANG[l as keyof typeof HTML_LANG], `/${l}/${s}`]),
   );
@@ -40,9 +43,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     alternates: { canonical: `/${a.lang}/${a.slug}`, languages },
     openGraph: {
       type: "article", title: a.title, description: a.meta_description || a.tldr, url: `/${a.lang}/${a.slug}`,
-      siteName: "IRON CYBER NEWS", locale: HTML_LANG[a.lang], publishedTime: a.published_at, tags: a.tags,
+      siteName: "IRON CYBER NEWS", locale: HTML_LANG[a.lang], publishedTime: a.published_at, tags: a.tags, images,
     },
-    twitter: { card: "summary_large_image", title: a.title, description: a.meta_description || a.tldr },
+    twitter: { card: "summary_large_image", title: a.title, description: a.meta_description || a.tldr, images: coverUrl ? [coverUrl] : undefined },
   };
 }
 
@@ -99,7 +102,7 @@ export default async function ArticlePage({ params }: Params) {
           </div>
         </header>
         <p className="article__tldr"><strong>TL;DR</strong> {a.tldr}</p>
-        <div className="prose article__body"><Md text={a.markdown} /></div>
+        <div className="prose article__body"><Md text={withoutTldrSection(a.markdown)} /></div>
       </article>
     </main>
   );

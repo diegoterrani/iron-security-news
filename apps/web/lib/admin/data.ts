@@ -108,3 +108,29 @@ export function rpcErrorMessage(message: string): string {
   if (message.includes("NOT_FOUND")) return "Conteúdo não encontrado.";
   return "Não foi possível concluir a ação. Tente de novo.";
 }
+
+export interface AssetRow {
+  channel: "blog" | "instagram" | "linkedin" | "youtube" | "facebook";
+  lang: Lang;
+  kind: "cover" | "carousel_slide" | "card" | "thumbnail" | "video";
+  position: number;
+  content_version: number;
+  public_url: string | null;
+  width: number | null;
+  height: number | null;
+}
+
+/** Criativos mais recentes de cada posição (a versão de conteúdo mais alta vence). */
+export async function getAssets(storyId: string): Promise<AssetRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("assets")
+    .select("channel, lang, kind, position, content_version, public_url, width, height")
+    .eq("story_id", storyId).eq("status", "ready")
+    .order("content_version", { ascending: false });
+  const latest = new Map<string, AssetRow>();
+  for (const a of (data ?? []) as AssetRow[]) {
+    const key = `${a.channel}|${a.lang}|${a.kind}|${a.position}`;
+    if (!latest.has(key)) latest.set(key, a);
+  }
+  return [...latest.values()].sort((x, y) => x.position - y.position);
+}
