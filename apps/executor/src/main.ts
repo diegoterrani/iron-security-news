@@ -165,6 +165,11 @@ async function renderWorker() {
   try {
     await consumeRender({
       pool, log, storage,
+      background: {
+        llm: anthropic ? { client: anthropic, model: config.LLM_MODEL_DEFAULT, prices } : null,
+        workersAi: config.CF_ACCOUNT_ID && config.CF_AI_TOKEN && config.BACKGROUNDS_ENABLED
+          ? { accountId: config.CF_ACCOUNT_ID, token: config.CF_AI_TOKEN } : null,
+      },
       revalidate: (tags) => revalidate(
         { pool, log, siteUrl: config.SITE_URL, revalidateUrl: config.REVALIDATE_URL, revalidateSecret: config.REVALIDATE_SECRET }, tags),
     }, queue);
@@ -203,6 +208,7 @@ log.info(
     module: "main", port: config.HEALTH_PORT, dryRun: config.PUBLISH_DRY_RUN, db: state.dbOk ? "ok" : "down",
     ingest: config.INGEST_ENABLED, embeddings: embed !== null,
     triage: aiEnabled, selection: aiEnabled && config.SELECTION_ENABLED, model: config.LLM_MODEL_DEFAULT, render: storage !== null,
+    backgrounds: Boolean(config.CF_ACCOUNT_ID && config.CF_AI_TOKEN && config.BACKGROUNDS_ENABLED),
   },
   "executor started",
 );

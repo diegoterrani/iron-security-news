@@ -5,6 +5,7 @@ import {
 } from "@ironnews/templates";
 import type { Pool } from "../db";
 import type { Logger } from "../logger";
+import { storyBackground, type BackgroundDeps } from "./background";
 import { renderPng } from "./png";
 import { uploadObject, type StorageConfig } from "./storage";
 
@@ -46,7 +47,7 @@ const slidesOf = (body: Record<string, unknown>): Slide[] =>
  * Lista de criativos de uma story (§4.7), por idioma com artigo e slug:
  * capa do blog/OG, card do LinkedIn, carrossel do Instagram (capa + slides + CTA, RN-RND02) e capa do Short.
  */
-export function planCreatives(story: StoryForRender, contents: ContentForRender[]): PlannedCreative[] {
+export function planCreatives(story: StoryForRender, contents: ContentForRender[], background?: string | null): PlannedCreative[] {
   const out: PlannedCreative[] = [];
   const find = (channel: string, lang: Lang) => contents.find((c) => c.channel === channel && c.lang === lang);
   for (const lang of ["pt", "en"] as const) {
@@ -55,6 +56,7 @@ export function planCreatives(story: StoryForRender, contents: ContentForRender[
     if (!article?.title || !slug) continue;
     const s: StoryCreative = {
       lang, severity: story.severity, category: story.category, cves: story.cve_ids, title: article.title, slug, logo: IRON_MARK_DATA_URI,
+      background: background ?? undefined,
     };
     out.push({ channel: "blog", lang, kind: "cover", position: 1, contentVersion: article.version, size: COVER, el: cover(s) });
     const li = find("linkedin", lang);
@@ -83,6 +85,8 @@ export interface RenderDeps {
   storage: StorageConfig;
   /** Pede ao site para regenerar páginas (tags do cache). Usado quando a story já está publicada. */
   revalidate?: (tags: string[]) => Promise<unknown>;
+  /** Ilustração de fundo por IA (opcional). */
+  background?: Pick<BackgroundDeps, "llm" | "workersAi">;
 }
 
 /** Renderiza, envia ao Storage e registra em `assets` todos os criativos da story. Idempotente. */
@@ -97,7 +101,12 @@ export async function renderStoryCreatives(deps: RenderDeps, storyId: string): P
     "select channel::text as channel, lang::text as lang, kind, version, title, body from latest_contents where story_id = $1",
     [storyId],
   );
-  const plan = planCreatives(story, contents);
+  const pt = contents.find((c) => c.channel === "blog" && c.lang === "pt") ?? contents.find((c) => c.channel === "blog");
+  const bg = deps.background && pt?.title
+    ? await storyBackground({ pool, log, storage: deps.storage, ...deps.background }, storyId,
+        { title: pt.title, tldr: String(pt.body.tldr ?? ""), category: story.category })
+    : null;
+  const plan = planCreatives(story, contents, bg);
   let done = 0;
   for (const p of plan) {
     const png = await renderPng(p.el, p.size);
