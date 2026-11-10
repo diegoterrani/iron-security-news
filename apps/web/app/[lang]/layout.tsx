@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { LANGS } from "@ironnews/shared";
 import { HTML_LANG, dict, isLang } from "@/lib/i18n";
 import { fontVars } from "@/lib/fonts";
+import { indexable } from "@/lib/seo";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import "../iron.css";
@@ -23,8 +24,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
     title: { default: "IRON CYBER NEWS", template: "%s · IRON CYBER NEWS" },
     description: dict[lang].meta.description,
-    alternates: { languages: { "pt-BR": "/pt", en: "/en" } },
-    robots: { index: false, follow: false }, // Fase 0: não indexar até o lançamento
+    alternates: {
+      languages: { "pt-BR": "/pt", en: "/en" },
+      types: { "application/rss+xml": `/${lang}/rss.xml` },
+    },
+    robots: indexable() ? { index: true, follow: true } : { index: false, follow: false },
   };
 }
 
