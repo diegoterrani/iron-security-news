@@ -87,13 +87,16 @@ export function writerParams(model: string, content: string): Anthropic.MessageC
   };
 }
 
-export function derivativesParams(model: string, lang: Lang, article: Article["pt"]): Anthropic.MessageCreateParamsNonStreaming {
+export function derivativesParams(model: string, lang: Lang, article: Article["pt"], previousError?: string): Anthropic.MessageCreateParamsNonStreaming {
+  const fix = previousError
+    ? `\n\nA versão anterior foi recusada pela validação: ${previousError}. Respeite os limites de tamanho de cada campo.`
+    : "";
   return {
     model,
     max_tokens: 8000,
     system: [{ type: "text", text: DERIVATIVES_SYSTEM, cache_control: { type: "ephemeral" } }],
     output_config: { effort: "low", format: jsonSchemaFormat(DerivativesSchema) },
-    messages: [{ role: "user", content: `<article lang="${lang}">\n# ${article.title}\n\n${article.markdown}\n</article>` }],
+    messages: [{ role: "user", content: `<article lang="${lang}">\n# ${article.title}\n\n${article.markdown}\n</article>${fix}` }],
   };
 }
 
@@ -256,15 +259,18 @@ export async function buildStory(deps: BuildDeps, storyId: string): Promise<"bui
   const derivatives: Partial<Record<Lang, Derivatives>> = {};
   const derivErrors: string[] = [];
   for (const lang of langs) {
+    let lastError: string | undefined;
     for (let i = 0; i < 2 && !derivatives[lang]; i++) {
-      const msg = await client.messages.create(derivativesParams(deps.model, lang, article[lang]));
+      // 2ª tentativa recebe o motivo da recusa (ex.: "facebook.text: Too big … <=700").
+      const msg = await client.messages.create(derivativesParams(deps.model, lang, article[lang], lastError));
       await recordUsage(pool, deps.prices, { storyId, task: "derive", model: msg.model, usage: msg.usage, batch: false });
       try {
         const parsed = DerivativesSchema.safeParse(coerceDerivatives(jsonFrom(msg)));
         if (!parsed.success) throw new Error(firstIssue(parsed.error));
         derivatives[lang] = parsed.data;
       } catch (err) {
-        if (i === 1) derivErrors.push(`${lang}: ${(err as Error).message}`.slice(0, 200));
+        lastError = (err as Error).message.slice(0, 300);
+        if (i === 1) derivErrors.push(`${lang}: ${lastError}`.slice(0, 200));
       }
     }
   }

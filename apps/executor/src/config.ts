@@ -29,6 +29,10 @@ const EnvSchema = z.object({
   TRIAGE_ENABLED: z.enum(["0", "1"]).default("1").transform((v) => v === "1"),
   /** Seleção diária cria stories; só faz sentido com a geração de conteúdo (etapa 3) no ar. */
   SELECTION_ENABLED: z.enum(["0", "1"]).default("0").transform((v) => v === "1"),
+  /** Site público e revalidação das páginas após publicar (§5.5). */
+  SITE_URL: z.string().url().default("https://news.iron-security.com").transform((u) => u.replace(/\/+$/, "")),
+  REVALIDATE_URL: z.string().url().optional(),
+  REVALIDATE_SECRET: z.string().min(16).optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
   PUBLISH_DRY_RUN: z

@@ -11,6 +11,7 @@ import { pollTriageBatches, submitTriageBatch, type TriageDeps } from "./triage/
 import { runSelectionIfDue } from "./triage/selection";
 import { Queue } from "./queue";
 import { consumeStoryBuild } from "./story/worker";
+import { publishDueBlogPosts } from "./publish/blog";
 
 /**
  * Fase 0: esqueleto do executor.
@@ -141,6 +142,18 @@ async function storyWorker() {
   }
 }
 
+/** Publicação no blog (§4.10): a cada minuto, publica os posts vencidos e atualiza o site. */
+async function publishBlog() {
+  if (!state.dbOk) return;
+  try {
+    await publishDueBlogPosts({
+      pool, log, siteUrl: config.SITE_URL, revalidateUrl: config.REVALIDATE_URL, revalidateSecret: config.REVALIDATE_SECRET,
+    });
+  } catch (err) {
+    log.error({ module: "publish", err: (err as Error).message }, "blog publish failed");
+  }
+}
+
 async function maintenance() {
   if (!state.dbOk) return;
   try {
@@ -159,6 +172,7 @@ const jobs = [
   new Cron("45 * * * * *", { protect: true, timezone: "UTC" }, triagePoll),
   new Cron("50 * * * * *", { protect: true, timezone: "UTC" }, selection),
   new Cron("*/20 * * * * *", { protect: true, timezone: "UTC" }, storyWorker),
+  new Cron("10 * * * * *", { protect: true, timezone: "UTC" }, publishBlog),
 ];
 const heartbeatTimer = setInterval(() => void heartbeat(), config.HEARTBEAT_INTERVAL_SEC * 1000);
 
