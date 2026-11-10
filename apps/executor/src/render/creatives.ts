@@ -81,6 +81,8 @@ export interface RenderDeps {
   pool: Pool;
   log: Logger;
   storage: StorageConfig;
+  /** Pede ao site para regenerar páginas (tags do cache). Usado quando a story já está publicada. */
+  revalidate?: (tags: string[]) => Promise<unknown>;
 }
 
 /** Renderiza, envia ao Storage e registra em `assets` todos os criativos da story. Idempotente. */
@@ -114,5 +116,10 @@ export async function renderStoryCreatives(deps: RenderDeps, storyId: string): P
     done++;
   }
   log.info({ module: "render", storyId, creatives: done }, "creatives rendered");
+  // Story já no ar: a capa entra na grade e no artigo agora, sem esperar o cache expirar.
+  if (done && deps.revalidate && ["PUBLISHED", "PARTIAL", "PUBLISHING"].includes(story.status)) {
+    const slugs = [story.slug_pt, story.slug_en].filter((x): x is string => Boolean(x));
+    await deps.revalidate(["articles", ...slugs.map((x) => `article:${x}`)]);
+  }
   return done;
 }
