@@ -136,6 +136,15 @@ export function coerceArticle(raw: unknown): unknown {
 
 const hashtag = (h: string) => "#" + h.normalize("NFD").replace(/\p{M}/gu, "").replace(/[^A-Za-z0-9_]/g, "");
 
+/** Corta no fim da última frase que cabe em `max` (sem frase inteira que caiba, corta por palavra). */
+export function fitSentences(text: string, max: number): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "), cut.lastIndexOf(".\n"), cut.lastIndexOf("!\n"), cut.lastIndexOf("?\n"));
+  return end > max * 0.5 ? cut.slice(0, end + 1).trim() : truncate(t, max);
+}
+
 export function coerceDerivatives(raw: unknown): unknown {
   if (!raw || typeof raw !== "object") return raw;
   const d = structuredClone(raw) as Record<string, any>;
@@ -147,6 +156,10 @@ export function coerceDerivatives(raw: unknown): unknown {
     if (typeof d.instagram.alt_text === "string") d.instagram.alt_text = truncate(d.instagram.alt_text, 300);
     if (typeof d.instagram.caption === "string") d.instagram.caption = truncate(d.instagram.caption, 2000);
   }
+  // Texto longo demais num canal não pode derrubar o pacote inteiro do idioma (carrossel incluído).
+  if (d.facebook && typeof d.facebook.text === "string") d.facebook.text = fitSentences(d.facebook.text, 700);
+  if (d.linkedin && typeof d.linkedin.text === "string") d.linkedin.text = fitSentences(d.linkedin.text, 1500);
+  if (d.youtube && typeof d.youtube.script === "string") d.youtube.script = fitSentences(d.youtube.script, 1000);
   if (d.linkedin) {
     if (Array.isArray(d.linkedin.hashtags)) d.linkedin.hashtags = [...new Set(d.linkedin.hashtags.map(String).map(hashtag))].slice(0, 5);
     if (typeof d.linkedin.alt_text === "string") d.linkedin.alt_text = truncate(d.linkedin.alt_text, 300);
@@ -259,20 +272,9 @@ export async function buildStory(deps: BuildDeps, storyId: string): Promise<"bui
   const derivatives: Partial<Record<Lang, Derivatives>> = {};
   const derivErrors: string[] = [];
   for (const lang of langs) {
-    let lastError: string | undefined;
-    for (let i = 0; i < 2 && !derivatives[lang]; i++) {
-      // 2ª tentativa recebe o motivo da recusa (ex.: "facebook.text: Too big … <=700").
-      const msg = await client.messages.create(derivativesParams(deps.model, lang, article[lang], lastError));
-      await recordUsage(pool, deps.prices, { storyId, task: "derive", model: msg.model, usage: msg.usage, batch: false });
-      try {
-        const parsed = DerivativesSchema.safeParse(coerceDerivatives(jsonFrom(msg)));
-        if (!parsed.success) throw new Error(firstIssue(parsed.error));
-        derivatives[lang] = parsed.data;
-      } catch (err) {
-        lastError = (err as Error).message.slice(0, 300);
-        if (i === 1) derivErrors.push(`${lang}: ${lastError}`.slice(0, 200));
-      }
-    }
+    const r = await generateDerivatives(deps, storyId, lang, article[lang]);
+    if (r.derivatives) derivatives[lang] = r.derivatives;
+    else derivErrors.push(`${lang}: ${r.error}`.slice(0, 200));
   }
 
   await saveContents(pool, { storyId, article, articleModel, passed, issues, history, facts, langs, derivatives, derivErrors });
@@ -284,7 +286,87 @@ export async function buildStory(deps: BuildDeps, storyId: string): Promise<"bui
   return "built";
 }
 
+/** Derivados de um idioma: 2 tentativas, a 2ª recebe o motivo da recusa (ex.: "facebook.text … <=700"). */
+export async function generateDerivatives(
+  deps: Pick<BuildDeps, "pool" | "client" | "model" | "prices">, storyId: string, lang: Lang, article: Article["pt"],
+): Promise<{ derivatives?: Derivatives; error?: string }> {
+  let lastError: string | undefined;
+  for (let i = 0; i < 2; i++) {
+    const msg = await deps.client.messages.create(derivativesParams(deps.model, lang, article, lastError));
+    await recordUsage(deps.pool, deps.prices, { storyId, task: "derive", model: msg.model, usage: msg.usage, batch: false });
+    try {
+      const parsed = DerivativesSchema.safeParse(coerceDerivatives(jsonFrom(msg)));
+      if (!parsed.success) throw new Error(firstIssue(parsed.error));
+      return { derivatives: parsed.data };
+    } catch (err) {
+      lastError = (err as Error).message.slice(0, 300);
+    }
+  }
+  return { error: lastError };
+}
+
 const render = <T>(v: T, facts: Facts, lang: Lang): T => JSON.parse(renderPlaceholders(JSON.stringify(v), facts, lang)) as T;
+
+type Queryable = { query: Pool["query"] };
+
+/** Grava os 4 derivados de um idioma como nova versão de cada conteúdo (placeholders já preenchidos). */
+async function insertDerivatives(db: Queryable, storyId: string, lang: Lang, d: Derivatives, facts: Facts, model: string) {
+  const r = render(d, facts, lang);
+  const rows: [string, string, string | null, unknown][] = [
+    ["instagram", "carousel", null, r.instagram],
+    ["facebook", "post", null, r.facebook],
+    ["linkedin", "post", null, r.linkedin],
+    ["youtube", "script", r.youtube.title, r.youtube],
+  ];
+  for (const [channel, kind, title, body] of rows) {
+    await db.query(
+      `insert into story_contents (story_id, channel, lang, kind, version, title, body, model, prompt_version)
+       values ($1, $2, $3, $4,
+               coalesce((select max(version) + 1 from story_contents where story_id = $1 and channel = $2 and lang = $3 and kind = $4), 1),
+               $5, $6::jsonb, $7, $8)`,
+      [storyId, channel, lang, kind, title, JSON.stringify(body), model, DERIVATIVES_PROMPT_VERSION],
+    );
+  }
+}
+
+/**
+ * Gera de novo os derivados que faltam (por padrão, idiomas com artigo e sem carrossel) a partir do artigo
+ * mais recente, grava como nova versão e pede os criativos. Usado para completar stories antigas.
+ */
+export async function regenerateDerivatives(deps: BuildDeps, storyId: string, only?: Lang): Promise<{ lang: Lang; ok: boolean; error?: string }[]> {
+  const { pool } = deps;
+  const { rows: [story] } = await pool.query<{ status: string; facts: Facts }>("select status, facts from stories where id = $1", [storyId]);
+  if (!story || ["DRAFTING", "REJECTED", "FAILED"].includes(story.status)) throw new Error(`story ${storyId} não está apta (${story?.status ?? "inexistente"})`);
+  const { rows } = await pool.query<{ lang: Lang; channel: string; title: string | null; body: Record<string, unknown> }>(
+    "select lang::text as lang, channel::text as channel, title, body from latest_contents where story_id = $1 and (channel = 'blog' or channel = 'instagram')",
+    [storyId],
+  );
+  const langs = (only ? [only] : (["pt", "en"] as Lang[])).filter((l) =>
+    rows.some((r) => r.lang === l && r.channel === "blog") && (only || !rows.some((r) => r.lang === l && r.channel === "instagram")));
+  const out: { lang: Lang; ok: boolean; error?: string }[] = [];
+  for (const lang of langs) {
+    const a = rows.find((r) => r.lang === lang && r.channel === "blog")!;
+    const article = {
+      title: a.title ?? "", tldr: String(a.body.tldr ?? ""), meta_description: String(a.body.meta_description ?? ""),
+      markdown: String(a.body.markdown_template ?? a.body.markdown ?? ""), tags: [],
+    } as unknown as Article["pt"];
+    const r = await generateDerivatives(deps, storyId, lang, article);
+    if (r.derivatives) {
+      await insertDerivatives(pool, storyId, lang, r.derivatives, story.facts ?? { cves: {} }, deps.model);
+      out.push({ lang, ok: true });
+    } else {
+      out.push({ lang, ok: false, error: r.error });
+    }
+  }
+  if (out.some((o) => o.ok)) {
+    const failed = out.filter((o) => !o.ok).map((o) => `${o.lang}: ${o.error}`.slice(0, 200));
+    await pool.query("update stories set error = $2 where id = $1", [storyId, failed.length ? `derivados com erro: ${failed.join(" | ")}` : null]);
+    await pool.query("select pgmq.send('render'::text, $1::jsonb, 0::integer)", [
+      JSON.stringify({ v: 1, traceId: storyId, attempt: 1, payload: { story_id: storyId } }),
+    ]);
+  }
+  return out;
+}
 
 async function saveContents(pool: Pool, p: {
   storyId: string; article: Article; articleModel: string; passed: boolean; issues: GuardIssue[];
@@ -315,13 +397,7 @@ async function saveContents(pool: Pool, p: {
       }, p.articleModel, WRITER_PROMPT_VERSION);
       slugs[lang] = await uniqueSlug(client, lang, slugify(a.title), p.storyId);
       const d = p.derivatives[lang];
-      if (d) {
-        const r = render(d, p.facts, lang);
-        await insert("instagram", lang, "carousel", null, r.instagram, p.articleModel, DERIVATIVES_PROMPT_VERSION);
-        await insert("facebook", lang, "post", null, r.facebook, p.articleModel, DERIVATIVES_PROMPT_VERSION);
-        await insert("linkedin", lang, "post", null, r.linkedin, p.articleModel, DERIVATIVES_PROMPT_VERSION);
-        await insert("youtube", lang, "script", r.youtube.title, r.youtube, p.articleModel, DERIVATIVES_PROMPT_VERSION);
-      }
+      if (d) await insertDerivatives(client, p.storyId, lang, d, p.facts, p.articleModel);
     }
     await client.query(
       `update stories set status = 'AWAITING_REVIEW', facts = $2::jsonb, fact_guard = $3::jsonb, tags = $4::text[],
