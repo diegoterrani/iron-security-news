@@ -61,3 +61,26 @@ describe("storage", () => {
     expect(headers?.get("apikey")).toBe(cfg.serviceKey);
   });
 });
+
+describe("fundo por IA", () => {
+  it("planCreatives passa o fundo a todos os criativos; sem fundo, nada muda", () => {
+    const withBg = planCreatives(story, contents, "data:image/jpeg;base64,AAAA");
+    const json = JSON.stringify(withBg.map((p) => p.el));
+    expect(json.split("data:image/jpeg;base64,AAAA").length - 1).toBe(withBg.length);
+    expect(JSON.stringify(planCreatives(story, contents).map((p) => p.el))).not.toContain("data:image/jpeg");
+  });
+  it("generateImage decodifica o JPEG do Workers AI e trata erro da API", async () => {
+    const { generateImage } = await import("../src/render/background");
+    let sent: { url: string; body: string } | null = null;
+    const ok = (async (url: string, init: RequestInit) => {
+      sent = { url, body: String(init.body) };
+      return new Response(JSON.stringify({ success: true, result: { image: Buffer.from("jpeg-bytes").toString("base64") } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const img = await generateImage({ accountId: "acc", token: "t", fetchImpl: ok }, "a dark server rack");
+    expect(img.toString()).toBe("jpeg-bytes");
+    expect(sent!.url).toContain("/accounts/acc/ai/run/@cf/black-forest-labs/flux-1-schnell");
+    expect(JSON.parse(sent!.body)).toMatchObject({ prompt: "a dark server rack", steps: 8 });
+    const fail = (async () => new Response(JSON.stringify({ success: false, errors: [{ message: "Authentication error" }] }), { status: 401 })) as unknown as typeof fetch;
+    await expect(generateImage({ accountId: "acc", token: "t", fetchImpl: fail }, "x")).rejects.toThrow(/Authentication error/);
+  });
+});

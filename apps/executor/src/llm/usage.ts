@@ -42,7 +42,7 @@ export function costUsd(prices: Record<string, ModelPrice>, model: string, u: Us
 
 export interface UsageRecord {
   storyId?: string | null;
-  task: "triage" | "write" | "derive" | "regenerate" | "factcheck";
+  task: "triage" | "write" | "derive" | "regenerate" | "factcheck" | "image_prompt";
   model: string;
   usage: Usage;
   batch: boolean;

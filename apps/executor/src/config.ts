@@ -29,6 +29,8 @@ const EnvSchema = z.object({
   TRIAGE_ENABLED: z.enum(["0", "1"]).default("1").transform((v) => v === "1"),
   /** Seleção diária cria stories; só faz sentido com a geração de conteúdo (etapa 3) no ar. */
   SELECTION_ENABLED: z.enum(["0", "1"]).default("0").transform((v) => v === "1"),
+  /** Ilustração de fundo dos criativos por IA (precisa de CF_ACCOUNT_ID + CF_AI_TOKEN com Workers AI). */
+  BACKGROUNDS_ENABLED: z.enum(["0", "1"]).default("1").transform((v) => v === "1"),
   /** Storage do Supabase para os criativos (bucket `media`). Sem os dois, a renderização fica desligada. */
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),

@@ -22,6 +22,11 @@ export interface StoryCreative {
   slug: string;
   /** Data URI do símbolo IRON (PNG recortado). */
   logo: string;
+  /**
+   * Ilustração de fundo gerada por IA sobre o tema (data URI), opcional. Entra sob o véu escuro esverdeado
+   * do Brand Kit ("imagens com véu de --paper por cima"); sem ela, o fundo é liso.
+   */
+  background?: string;
 }
 
 export interface Slide {
@@ -97,13 +102,35 @@ function paragraph(text: string, size: number, color: string = C.muted): El {
   return h("div", { fontFamily: SANS, fontWeight: 400, fontSize: size, lineHeight: 1.5, color }, text);
 }
 
+/** Véus sobre a ilustração (cor --paper #090f0d): mais fortes onde fica o texto. */
+const VEIL = {
+  /** Cards largos: texto à esquerda, ilustração aparece à direita. */
+  left: "linear-gradient(90deg, rgba(9,15,13,0.96) 0%, rgba(9,15,13,0.84) 45%, rgba(9,15,13,0.3) 100%)",
+  /** Capas verticais: ilustração visível no topo, texto legível no meio e embaixo. */
+  vertical: "linear-gradient(180deg, rgba(9,15,13,0.35) 0%, rgba(9,15,13,0.62) 30%, rgba(9,15,13,0.82) 62%, rgba(9,15,13,0.95) 100%)",
+  /** Slides de texto e CTA: só textura. */
+  texture: "linear-gradient(180deg, rgba(9,15,13,0.86) 0%, rgba(9,15,13,0.94) 100%)",
+} as const;
+type Veil = keyof typeof VEIL;
+
+/** Fundo (--ink liso ou ilustração + véu) e o conteúdo por cima, no tamanho exato do criativo. */
+function scene(w: number, h_: number, bg: string | undefined, veil: Veil, content: El): El {
+  if (!bg) return h("div", { width: w, height: h_, backgroundColor: C.ink }, content);
+  const layer = { position: "absolute", top: 0, left: 0, width: w, height: h_ } as const;
+  return h("div", { width: w, height: h_, backgroundColor: C.ink, position: "relative" },
+    { type: "img", props: { src: bg, width: w, height: h_, style: { ...layer, objectFit: "cover" } } },
+    h("div", { ...layer, backgroundImage: VEIL[veil] }),
+    h("div", { ...layer }, content));
+}
+
 /**
- * Moldura com fundo liso (--ink). O conteúdo vai num contêiner de tamanho explícito: o Satori soma o
- * padding à largura, e sem isso o texto transborda a borda direita e o rodapé some.
+ * Moldura com padding. O conteúdo vai num contêiner de tamanho explícito: o Satori soma o padding à
+ * largura, e sem isso o texto transborda a borda direita e o rodapé some.
  */
-const frame = (w: number, h_: number, pad: number, ...children: Child[]): El =>
-  h("div", { width: w, height: h_, backgroundColor: C.ink, padding: pad },
-    h("div", { width: w - 2 * pad, height: h_ - 2 * pad, flexDirection: "column" }, ...children));
+const frame = (w: number, h_: number, pad: number, bg: string | undefined, veil: Veil, ...children: Child[]): El =>
+  scene(w, h_, bg, veil,
+    h("div", { width: w, height: h_, padding: pad },
+      h("div", { width: w - 2 * pad, height: h_ - 2 * pad, flexDirection: "column" }, ...children)));
 
 /** Hairline horizontal de 1 px (--line). */
 const hairline = () => h("div", { width: "100%", height: 1, backgroundColor: C.line });
@@ -117,7 +144,7 @@ const articleUrl = (s: StoryCreative) => `${SITE}/${s.lang}/${s.slug}`;
 export const CAROUSEL = { width: 1080, height: 1350 } as const;
 
 export function carouselCover(s: StoryCreative, slide: Slide, total: number): El {
-  return frame(CAROUSEL.width, CAROUSEL.height, 80,
+  return frame(CAROUSEL.width, CAROUSEL.height, 80, s.background, "vertical",
     h("div", { justifyContent: "space-between", alignItems: "center" },
       brand(s.logo, 56),
       h("div", { fontFamily: MONO, fontSize: 24, color: C.subtle, letterSpacing: "0.1em" }, `01 / ${String(total).padStart(2, "0")}`)),
@@ -139,7 +166,7 @@ function arrowIcon(size: number, color: string): El {
 }
 
 export function carouselSlide(s: StoryCreative, slide: Slide, index: number, total: number): El {
-  return frame(CAROUSEL.width, CAROUSEL.height, 80,
+  return frame(CAROUSEL.width, CAROUSEL.height, 80, s.background, "texture",
     h("div", { justifyContent: "space-between", alignItems: "center" },
       brand(s.logo, 44),
       h("div", { fontFamily: MONO, fontSize: 24, color: C.subtle, letterSpacing: "0.1em" },
@@ -157,7 +184,7 @@ export function carouselSlide(s: StoryCreative, slide: Slide, index: number, tot
 
 export function carouselCta(s: StoryCreative, total: number): El {
   const pt = s.lang === "pt";
-  return frame(CAROUSEL.width, CAROUSEL.height, 80,
+  return frame(CAROUSEL.width, CAROUSEL.height, 80, s.background, "texture",
     h("div", { justifyContent: "flex-end", fontFamily: MONO, fontSize: 24, color: C.subtle, letterSpacing: "0.1em" },
       `${String(total).padStart(2, "0")} / ${String(total).padStart(2, "0")}`),
     h("div", { flexDirection: "column", flexGrow: 1, justifyContent: "center", alignItems: "flex-start", gap: 48 },
@@ -179,19 +206,22 @@ export function carouselCta(s: StoryCreative, total: number): El {
 export const CARD_LINKEDIN = { width: 1200, height: 627 } as const;
 export const COVER = { width: 1200, height: 630 } as const;
 
+/**
+ * Capa do blog/OG e card do LinkedIn: largura toda, sem painel lateral com o escudo grande
+ * (a marca fica no cabeçalho). Com ilustração, ela aparece à direita sob o véu.
+ */
 function wideCard(s: StoryCreative, size: { width: number; height: number }): El {
-  return h("div", { width: size.width, height: size.height, backgroundColor: C.ink },
-    h("div", { flexDirection: "column", width: 860, padding: "56px 0 52px 64px", justifyContent: "space-between" },
-      brand(s.logo, 40),
-      h("div", { flexDirection: "column", gap: 28 },
-        eyebrow(kicker(s), 18),
-        headline(s.title, s.title.length > 60 ? 50 : 58, { maxWidth: 780 })),
-      h("div", { gap: 12, flexWrap: "wrap" }, riskTag(s.severity, s.lang, 18), ...s.cves.slice(0, 2).map((c) => chip(c, 18)))),
-    h("div", { width: 1, height: size.height, backgroundColor: C.line }),
-    h("div", { flexGrow: 1, flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 28, backgroundColor: C.soft },
-      { type: "img", props: { src: s.logo, width: 154, height: 200, style: { width: 154, height: 200 } } },
-      h("div", { fontFamily: MONO, fontSize: 15, color: C.subtle, letterSpacing: "0.12em" }, SITE.toUpperCase())),
-  );
+  const padX = 64, padTop = 56, padBottom = 52;
+  return scene(size.width, size.height, s.background, "left",
+    h("div", { width: size.width, height: size.height, padding: `${padTop}px ${padX}px ${padBottom}px` },
+      h("div", { width: size.width - 2 * padX, height: size.height - padTop - padBottom, flexDirection: "column", justifyContent: "space-between" },
+        brand(s.logo, 40),
+        h("div", { flexDirection: "column", gap: 28 },
+          eyebrow(kicker(s), 18),
+          headline(s.title, s.title.length > 60 ? 52 : 60, { maxWidth: 860 })),
+        h("div", { justifyContent: "space-between", alignItems: "center" },
+          h("div", { gap: 12, flexWrap: "wrap" }, riskTag(s.severity, s.lang, 18), ...s.cves.slice(0, 2).map((c) => chip(c, 18))),
+          h("span", { fontFamily: MONO, fontSize: 15, color: C.subtle, letterSpacing: "0.12em" }, SITE.toUpperCase())))));
 }
 
 export const cardLinkedin = (s: StoryCreative) => wideCard(s, CARD_LINKEDIN);
@@ -203,7 +233,7 @@ export const cover = (s: StoryCreative) => wideCard(s, COVER);
 export const THUMB_SHORT = { width: 1080, height: 1920 } as const;
 
 export function thumbShort(s: StoryCreative, hook: string): El {
-  return frame(THUMB_SHORT.width, THUMB_SHORT.height, 90,
+  return frame(THUMB_SHORT.width, THUMB_SHORT.height, 90, s.background, "vertical",
     h("div", { justifyContent: "center", paddingTop: 60 }, brand(s.logo, 64)),
     h("div", { flexDirection: "column", flexGrow: 1, justifyContent: "center", gap: 56 },
       eyebrow(kicker(s), 30),
