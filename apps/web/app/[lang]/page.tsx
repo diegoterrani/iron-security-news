@@ -1,11 +1,14 @@
 import { notFound } from "next/navigation";
 import { CATEGORIES, SEVERITIES } from "@ironnews/shared";
-import { Database, Languages, Radar, Radio, ShieldCheck, UserCheck } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { dict, isLang } from "@/lib/i18n";
+import { Accent } from "@/components/Accent";
+import { Eyebrow } from "@/components/Eyebrow";
+import { Icon, type IconName } from "@/components/Icon";
 import { SeverityBadge } from "@/components/SeverityBadge";
-import { listArticles, type ArticleSummary } from "@/lib/blog";
 import { ArticleCard } from "@/components/ArticleCard";
+import { listArticles, type ArticleSummary } from "@/lib/blog";
+import { homeJsonLd, jsonLdScript } from "@/lib/structured-data";
+import { siteUrl } from "@/lib/supabase/env";
 
 /** Fontes cadastradas em supabase/seed.sql. */
 const CURATED_SOURCES = 21;
@@ -13,7 +16,8 @@ const CURATED_SOURCES = 21;
 /** ISR: o executor invalida a tag "articles" ao publicar; sem isso, a página se renova em 5 min. */
 export const revalidate = 300;
 
-type Metric = { tone: string; icon: LucideIcon; label: string; value: string; hint: string };
+/** Métricas institucionais: cor neutra (acento), nunca cor de risco (risco é só para severidade). */
+type Metric = { icon: IconName; label: string; value: string; hint: string };
 
 export default async function Home({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -22,59 +26,53 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
   let articles: ArticleSummary[] = [];
   try {
     articles = await listArticles(lang);
-  } catch {
-    // Banco indisponível no build/render: mostra o estado vazio em vez de quebrar a home.
+  } catch (err) {
+    // Banco indisponível no build/render: registra e mostra o estado vazio em vez de quebrar a home.
+    console.error("[home] listArticles falhou:", err instanceof Error ? err.message : err);
   }
 
   const metrics: Metric[] = [
-    { tone: "cyan", icon: Radar, label: t.metrics.sources.label, value: String(CURATED_SOURCES), hint: t.metrics.sources.hint },
-    { tone: "accepted", icon: Languages, label: t.metrics.languages.label, value: t.metrics.languages.value, hint: t.metrics.languages.hint },
-    { tone: "low", icon: UserCheck, label: t.metrics.review.label, value: t.metrics.review.value, hint: t.metrics.review.hint },
-    { tone: "medium", icon: Database, label: t.metrics.data.label, value: "NVD · KEV · EPSS", hint: t.metrics.data.hint },
+    { icon: "radar", label: t.metrics.sources.label, value: String(CURATED_SOURCES), hint: t.metrics.sources.hint },
+    { icon: "globe", label: t.metrics.languages.label, value: t.metrics.languages.value, hint: t.metrics.languages.hint },
+    { icon: "eye", label: t.metrics.review.label, value: t.metrics.review.value, hint: t.metrics.review.hint },
+    { icon: "layers", label: t.metrics.data.label, value: "NVD · KEV · EPSS", hint: t.metrics.data.hint },
   ];
 
   return (
-    <main id="content" className="page">
-      <section className="page-head" aria-labelledby="page-title">
-        <div>
-          <p className="eyebrow">
-            <Radio className="icon" size={14} aria-hidden="true" />
-            {t.hero.eyebrow}
-          </p>
-          <h1 id="page-title" className="page-title">{t.hero.title}</h1>
-          <p className="page-subtitle">{t.hero.subtitle}</p>
-        </div>
+    <main id="content">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(homeJsonLd(siteUrl(), lang, t.meta.description)) }}
+      />
+      <section className="page-hero" aria-labelledby="page-title">
+        <Eyebrow>{t.hero.eyebrow}</Eyebrow>
+        <h1 id="page-title" className="page-hero__title"><Accent parts={t.hero.title} /></h1>
+        <p className="page-hero__lead">{t.hero.subtitle}</p>
       </section>
 
-      <section className="grid-metrics" aria-label={t.hero.eyebrow}>
-        {metrics.map(({ tone, icon: Icon, label, value, hint }) => (
-          <article key={label} className={`metric-card metric-card--${tone}`}>
-            <div className="metric-card__top">
-              <span className="metric-card__label">{label}</span>
-              <Icon className="icon metric-card__icon" size={18} aria-hidden="true" />
-            </div>
-            <div>
-              <div className="metric-card__value">{value}</div>
-              <div className="metric-card__hint">{hint}</div>
-            </div>
-          </article>
+      <section className="stat-grid" aria-label={t.hero.eyebrow}>
+        {metrics.map(({ icon, label, value, hint }) => (
+          <div key={label} className="stat">
+            <p className="stat__label"><Icon name={icon} />{label}</p>
+            <p className="stat__value">{value}</p>
+            <p className="stat__hint">{hint}</p>
+          </div>
         ))}
       </section>
 
-      <section id="latest" className="latest" aria-labelledby="latest-title">
-        <div className="section-head">
-          <h2 id="latest-title" className="section-title">{t.feed.title}</h2>
-          <span className="section-hint">{t.feed.hint}</span>
+      <section id="latest" className="section" aria-labelledby="latest-title">
+        <div className="section__head section__head--row">
+          <div>
+            <Eyebrow>{t.feed.eyebrow}</Eyebrow>
+            <h2 id="latest-title" className="h2"><Accent parts={t.feed.title} /></h2>
+          </div>
+          <p className="result-count">{t.feed.hint}</p>
         </div>
         {articles.length === 0 ? (
-          <div className="panel panel--feed">
-            <div className="empty">
-              <span className="empty__icon" aria-hidden="true">
-                <ShieldCheck className="icon" size={22} />
-              </span>
-              <p className="empty__title">{t.feed.emptyTitle}</p>
-              <p className="empty__text">{t.feed.emptyText}</p>
-            </div>
+          <div className="empty">
+            <Icon name="shield" className="ico empty__icon" />
+            <p className="empty__title">{t.feed.emptyTitle}</p>
+            <p className="empty__text">{t.feed.emptyText}</p>
           </div>
         ) : (
           <ul className="news-grid">
@@ -85,42 +83,45 @@ export default async function Home({ params }: { params: Promise<{ lang: string 
         )}
       </section>
 
-      <div className="grid-info">
-        <section className="panel" aria-labelledby="severity-title">
-          <h2 id="severity-title" className="section-title section-head">{t.severity.title}</h2>
-          <ul className="severity-list">
-            {SEVERITIES.map((s) => (
-              <li key={s} className="severity-list__item">
-                <span><SeverityBadge severity={s} label={t.severity.labels[s]} /></span>
-                <span>{t.severity.descriptions[s]}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+      <section className="section section--soft" aria-label={t.method.eyebrow}>
+        <div className="feature-grid">
+          <section id="severity" className="feature" aria-labelledby="severity-title">
+            <Eyebrow>{t.severity.eyebrow}</Eyebrow>
+            <h2 id="severity-title" className="feature__title"><Accent parts={t.severity.title} /></h2>
+            <ul className="severity-list">
+              {SEVERITIES.map((s) => (
+                <li key={s}>
+                  <SeverityBadge severity={s} label={t.severity.labels[s]} />
+                  <span>{t.severity.descriptions[s]}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
 
-        <section id="coverage" className="panel" aria-labelledby="coverage-title">
-          <h2 id="coverage-title" className="section-title section-head">{t.coverage.title}</h2>
-          <ul className="chips">
-            {CATEGORIES.filter((c) => c !== "other").map((c) => (
-              <li key={c} className="chip">{t.coverage.categories[c]}</li>
-            ))}
-          </ul>
-        </section>
+          <section id="coverage" className="feature" aria-labelledby="coverage-title">
+            <Eyebrow>{t.coverage.eyebrow}</Eyebrow>
+            <h2 id="coverage-title" className="feature__title"><Accent parts={t.coverage.title} /></h2>
+            <ul className="chips">
+              {CATEGORIES.filter((c) => c !== "other").map((c) => (
+                <li key={c} className="scope-chip">{t.coverage.categories[c]}</li>
+              ))}
+            </ul>
+          </section>
 
-        <section id="method" className="panel" aria-labelledby="method-title">
-          <h2 id="method-title" className="section-title section-head">{t.method.title}</h2>
-          <ol className="steps">
-            {t.method.steps.map((step) => (
-              <li key={step.title} className="steps__item">
-                <span>
-                  <strong>{step.title}</strong>
-                  {step.text}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      </div>
+          <section id="method" className="feature" aria-labelledby="method-title">
+            <Eyebrow>{t.method.eyebrow}</Eyebrow>
+            <h2 id="method-title" className="feature__title"><Accent parts={t.method.title} /></h2>
+            <ol className="steps">
+              {t.method.steps.map((step, i) => (
+                <li key={step.title}>
+                  <span className="steps__num" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span>
+                  <span><strong>{step.title}</strong> {step.text}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
+      </section>
     </main>
   );
 }

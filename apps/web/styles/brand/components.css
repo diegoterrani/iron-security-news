@@ -1,0 +1,7 @@
+/*
+ * Valores exatos de componentes do design system que não são tokens nomeados.
+ * Origem: diegoterrani/IronSecurity-WebSite-New@04d3a7c:apps/site/styles/site.css
+ * (".scope-chip", que por sua vez copia design-system/components/bundle.css).
+ * Únicos hex permitidos fora de tokens.css (o teste de conformidade só aceita hex em styles/brand/).
+ */
+.scope-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; background: #17342a73; border: 1px solid #2a4a3d; color: #8da99b; text-transform: uppercase; letter-spacing: .06em; font: 400 12px var(--font-mono); }

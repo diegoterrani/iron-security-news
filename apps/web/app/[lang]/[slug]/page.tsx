@@ -2,13 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
-import { ArrowLeft } from "lucide-react";
 import type { Lang } from "@ironnews/shared";
+import { Eyebrow } from "@/components/Eyebrow";
+import { Icon } from "@/components/Icon";
 import { SeverityBadge } from "@/components/SeverityBadge";
 import { fmtDate, getAlternates, getArticle } from "@/lib/blog";
 import { HTML_LANG, dict, isLang } from "@/lib/i18n";
 import { withoutTldrSection } from "@/lib/markdown";
 import { siteUrl } from "@/lib/supabase/env";
+import { DEFAULT_OG_IMAGE, articleJsonLd, jsonLdScript } from "@/lib/structured-data";
 
 /** ISR: o executor invalida "article:<slug>" ao publicar ou editar; sem isso, renova em 5 min. */
 export const revalidate = 300;
@@ -33,7 +35,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!data) return {};
   const { article: a, alternates } = data;
   const coverUrl = a.cover_url;
-  const images = coverUrl ? [{ url: coverUrl, width: 1200, height: 630, alt: a.title }] : undefined;
+  // Sem capa renderizada, cai na imagem padrão do blog (nunca compartilha sem imagem).
+  const image = { url: coverUrl ?? DEFAULT_OG_IMAGE.url, width: 1200, height: 630, alt: coverUrl ? a.title : DEFAULT_OG_IMAGE.alt };
+  const images = [image];
   const languages = Object.fromEntries(
     Object.entries(alternates).map(([l, s]) => [HTML_LANG[l as keyof typeof HTML_LANG], `/${l}/${s}`]),
   );
@@ -45,7 +49,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       type: "article", title: a.title, description: a.meta_description || a.tldr, url: `/${a.lang}/${a.slug}`,
       siteName: "IRON CYBER NEWS", locale: HTML_LANG[a.lang], publishedTime: a.published_at, tags: a.tags, images,
     },
-    twitter: { card: "summary_large_image", title: a.title, description: a.meta_description || a.tldr, images: coverUrl ? [coverUrl] : undefined },
+    twitter: { card: "summary_large_image", title: a.title, description: a.meta_description || a.tldr, images: [image.url] },
   };
 }
 
@@ -67,36 +71,26 @@ export default async function ArticlePage({ params }: Params) {
   if (!data) notFound();
   const { article: a, alternates } = data;
   const t = dict[data.lang];
-  const url = `${siteUrl()}/${a.lang}/${a.slug}`;
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "NewsArticle",
-    headline: a.title,
-    description: a.meta_description || a.tldr,
-    datePublished: a.published_at,
-    inLanguage: HTML_LANG[a.lang],
-    mainEntityOfPage: url,
-    keywords: [...a.tags, ...a.cve_ids].join(", "),
-    author: { "@type": "Organization", name: "Iron Security", url: "https://www.iron-security.com" },
-    publisher: { "@type": "Organization", name: "Iron Security", logo: { "@type": "ImageObject", url: `${siteUrl()}/brand/iron-mark.png` } },
-  };
+  const jsonLd = articleJsonLd(a, siteUrl());
   const other = a.lang === "pt" ? "en" : "pt";
 
   return (
-    <main id="content" className="page article-page">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
-      <Link href={`/${a.lang}`} className="back-link"><ArrowLeft className="icon" size={14} aria-hidden="true" /> {t.feed.title}</Link>
+    <main id="content" className="article-page">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
+      <Link href={`/${a.lang}`} className="text-link back-link">
+        <Icon name="arrow" className="ico ico--flip" /> {t.article.back}
+      </Link>
       <article className="article">
         <header className="article__head">
-          <p className="eyebrow">{t.coverage.categories[a.category as keyof typeof t.coverage.categories] ?? a.category}</p>
+          <Eyebrow>{t.coverage.categories[a.category as keyof typeof t.coverage.categories] ?? a.category}</Eyebrow>
           <h1 className="article__title">{a.title}</h1>
-          <div className="article-item__meta">
+          <div className="meta-row">
             <SeverityBadge severity={a.severity} label={t.severity.labels[a.severity]} />
-            {a.cve_ids.map((c) => <span key={c} className="chip mono">{c}</span>)}
+            {a.cve_ids.map((c) => <span key={c} className="scope-chip">{c}</span>)}
             <time dateTime={a.published_at}>{fmtDate(a.published_at, a.lang)}</time>
             {alternates[other] && (
-              <Link href={`/${other}/${alternates[other]}`} hrefLang={other} lang={other} className="article__alt">
-                {other === "en" ? "Read in English" : "Ler em português"}
+              <Link href={`/${other}/${alternates[other]}`} hrefLang={other} lang={other} className="text-link article__alt">
+                {t.article.readOther}
               </Link>
             )}
           </div>
@@ -108,7 +102,7 @@ export default async function ArticlePage({ params }: Params) {
             <img src={a.cover_url} alt="" width={1200} height={630} fetchPriority="high" decoding="async" />
           </figure>
         )}
-        <p className="article__tldr"><strong>TL;DR</strong> {a.tldr}</p>
+        <p className="article__tldr"><strong>{t.article.tldr}</strong> {a.tldr}</p>
         <div className="prose article__body"><Md text={withoutTldrSection(a.markdown)} /></div>
       </article>
     </main>
