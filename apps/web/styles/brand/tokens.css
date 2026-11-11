@@ -1,0 +1,112 @@
+/*
+ * CÓPIA LITERAL de diegoterrani/IronSecurity-WebSite-New@04d3a7c:packages/brand/src/tokens.css.
+ * Fonte única de verdade dos tokens da marca. Não edite aqui: altere no site e copie de novo
+ * (o teste test/design-system.test.ts compara os valores-chave com o design system).
+ */
+/*
+ * Iron Security design tokens. Single source of truth for Domain Check and the legacy Vite site.
+ * Values mirror apps/site/styles/tokens.css (the institutional Next.js site); change both together.
+ * Fonts are NOT loaded here: each app self-hosts Manrope and IBM Plex Mono and exposes them as
+ * --font-manrope / --font-plex-mono (next/font) or loads them itself.
+ *
+ * Contrast (WCAG 2.1 AA) on --paper / --ink:
+ *   --text 17.2:1, --muted 8.9:1, --subtle 6.8:1, --accent-text 9.3:1, --accent 6.4:1.
+ * Never use a grey dimmer than --subtle for text. Teal (--teal) is decorative/fill only on dark surfaces.
+ */
+:root {
+  /* Surfaces */
+  --ink: #050807;
+  --deep: #030706;
+  --paper: #090f0d;
+  --deep-2: #07110e;
+  --soft: #0d1713;
+  --form-bg: #0d1814;
+  --modal-bg: #0b1511;
+  --surface: #101e19;
+  --band: #10251e;
+  --surface-2: #152720;
+  --icon-bg: #17372d;
+  --footer-bg: #040d0f;
+
+  /* Lines */
+  --line: #21352d;
+  --line-soft: #8bb19d2e;
+  --hairline-white: #ffffff1f;
+  --field-line: #294239;
+  --icon-border: #2b5949;
+
+  /* Text */
+  --text: #edf3ef;
+  --nav-text: #b6c3bd;
+  --muted: #a3b4ac;
+  --subtle: #8a9d94;
+
+  /* Accent */
+  --acid: #1b3534;
+  --acid-hover: #326957;
+  --accent: #6f9e89;
+  --accent-text: #93bda9;
+  --teal: #578b76;
+  --live: #477c68;
+  --icon-ink: #8db09f;
+  --focus: #a9e8ca;
+  --danger: #ef8f95;
+  --field-error: #e7a58f;
+
+  /* Risk scale (Domain Check report). Fill = background of a tag/bar; ink = readable text on dark. */
+  --risk-critical: #c2413a;
+  --risk-critical-ink: #f6b4ae;
+  --risk-high: #b8662a;
+  --risk-high-ink: #f2c39b;
+  --risk-medium: #a8862a;
+  --risk-medium-ink: #ecd590;
+  --risk-low: #4f7895;
+  --risk-low-ink: #b9d3e6;
+  --risk-info: #4f6b74;
+  --risk-info-ink: #b7c9cf;
+  --risk-ok: #3f8a63;
+  --risk-ok-ink: #a9e0c2;
+
+  /* Legacy risk tokens kept for the institutional site */
+  --risk-red: #991b1b;
+  --risk-red-ink: #fecaca;
+  --risk-yellow: #ca8a04;
+  --risk-yellow-ink: #fef08a;
+  --risk-green: #16a34a;
+  --risk-green-ink: #bbf7d0;
+
+  /* Light result themes (legacy) */
+  --red-bg: #fff1f2;
+  --red-accent: #b91c1c;
+  --yellow-bg: #fffbeb;
+  --yellow-accent: #92400e;
+  --green-bg: #f0fdf4;
+  --green-accent: #166534;
+  --neutral-bg: #f8fafc;
+  --neutral-accent: #0f172a;
+
+  /* Spacing, shape and layout */
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 22px;
+  --space-4: 32px;
+  --space-5: 44px;
+  --space-6: 60px;
+  --space-7: 78px;
+  --space-8: 120px;
+  --header-height: 84px;
+  --control-height: 48px;
+  --icon-box: 46px;
+  --page-max: 1240px;
+  --gutter: max(6vw, calc(50vw - 620px));
+  --radius: 0;
+  --page: min(1240px, calc(100vw - 48px));
+  --shadow-modal: 0 35px 100px #0000008c;
+  --font-sans: var(--font-manrope, "Manrope"), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, monospace;
+
+  /* Legacy aliases used by the institutional Vite stylesheet. */
+  --white: var(--text);
+  --acid-2: var(--accent);
+  --mint: var(--accent-text);
+}
