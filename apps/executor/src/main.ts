@@ -12,6 +12,7 @@ import { runSelectionIfDue } from "./triage/selection";
 import { Queue } from "./queue";
 import { consumeStoryBuild } from "./story/worker";
 import { publishDueBlogPosts, revalidate } from "./publish/blog";
+import { publishDueInstagramPosts, refreshInstagramTokens } from "./publish/instagram";
 import { consumeRender } from "./render/worker";
 
 /**
@@ -178,6 +179,28 @@ async function renderWorker() {
   }
 }
 
+/** Instagram (§8.4): publica o que o painel pediu. Precisa do Storage (JPEG) e da chave dos tokens. */
+async function publishInstagram() {
+  if (!storage || !config.TOKEN_ENC_KEY || !state.dbOk) return;
+  try {
+    await publishDueInstagramPosts({
+      pool, log, storage, tokenKey: config.TOKEN_ENC_KEY, dryRun: config.PUBLISH_DRY_RUN,
+      api: { graphVersion: config.INSTAGRAM_GRAPH_VERSION },
+    });
+  } catch (err) {
+    log.error({ module: "publish", channel: "instagram", err: (err as Error).message }, "instagram publish failed");
+  }
+}
+
+async function refreshTokens() {
+  if (!config.TOKEN_ENC_KEY || !state.dbOk) return;
+  try {
+    await refreshInstagramTokens({ pool, log, tokenKey: config.TOKEN_ENC_KEY });
+  } catch (err) {
+    log.error({ module: "integrations", err: (err as Error).message }, "token refresh failed");
+  }
+}
+
 async function maintenance() {
   if (!state.dbOk) return;
   try {
@@ -198,6 +221,8 @@ const jobs = [
   new Cron("*/20 * * * * *", { protect: true, timezone: "UTC" }, storyWorker),
   new Cron("10 * * * * *", { protect: true, timezone: "UTC" }, publishBlog),
   new Cron("5,25,45 * * * * *", { protect: true, timezone: "UTC" }, renderWorker),
+  new Cron("40 * * * * *", { protect: true, timezone: "UTC" }, publishInstagram),
+  new Cron("23 7 * * *", { protect: true, timezone: "UTC" }, refreshTokens),
 ];
 const heartbeatTimer = setInterval(() => void heartbeat(), config.HEARTBEAT_INTERVAL_SEC * 1000);
 
@@ -208,6 +233,7 @@ log.info(
     module: "main", port: config.HEALTH_PORT, dryRun: config.PUBLISH_DRY_RUN, db: state.dbOk ? "ok" : "down",
     ingest: config.INGEST_ENABLED, embeddings: embed !== null,
     triage: aiEnabled, selection: aiEnabled && config.SELECTION_ENABLED, model: config.LLM_MODEL_DEFAULT, render: storage !== null,
+    instagram: Boolean(storage && config.TOKEN_ENC_KEY),
     backgrounds: Boolean(config.CF_ACCOUNT_ID && config.CF_AI_TOKEN && config.BACKGROUNDS_ENABLED),
   },
   "executor started",

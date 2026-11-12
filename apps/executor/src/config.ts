@@ -38,6 +38,9 @@ const EnvSchema = z.object({
   SITE_URL: z.string().url().default("https://news.iron-security.com").transform((u) => u.replace(/\/+$/, "")),
   REVALIDATE_URL: z.string().url().optional(),
   REVALIDATE_SECRET: z.string().min(16).optional(),
+  /** Chave AES-256-GCM dos tokens OAuth (MESMO valor da Vercel). Sem ela, a publicação no Instagram fica desligada. */
+  TOKEN_ENC_KEY: z.string().min(40).optional(),
+  INSTAGRAM_GRAPH_VERSION: z.string().regex(/^v\d+\.\d+$/).default("v23.0"),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
   PUBLISH_DRY_RUN: z

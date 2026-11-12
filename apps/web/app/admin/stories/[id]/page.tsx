@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Download, ExternalLink } from "lucide-react";
 import { SeverityBadge } from "@/components/SeverityBadge";
-import { canEdit, getAssets, getStory, getViewer, type AssetRow, type ContentRow } from "@/lib/admin/data";
+import { canEdit, getAssets, getInstagramPublish, getStory, getViewer, type AssetRow, type ContentRow, type InstagramPublishState } from "@/lib/admin/data";
 import { CATEGORY_LABEL, CHANNEL_LABEL, SEVERITY_LABEL, STATUS_LABEL, fmtDateTime } from "@/lib/admin/labels";
 import { CopyButton } from "./CopyButton";
+import { PublishInstagramButton } from "./PublishInstagram";
 import { EditForm, ReviewActions } from "./ReviewForms";
 
 export const metadata: Metadata = { title: "Story" };
@@ -62,8 +63,9 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
 
   let body: React.ReactNode = null;
   if (tab === "criativos") {
-    const assets = await getAssets(story.id);
-    body = <Creatives assets={assets} find={find} />;
+    const [assets, igPublish] = await Promise.all([getAssets(story.id), getInstagramPublish(story.id)]);
+    const publish = { storyId: story.id, isAdmin: viewer?.role === "admin", approved: APPROVED_STATUSES.includes(story.status), ...igPublish };
+    body = <Creatives assets={assets} find={find} publish={publish} />;
   } else if (tab === "pt" || tab === "en") {
     const a = find("blog", tab);
     body = !a ? <p className="section-hint">Sem artigo neste idioma.</p> : (
@@ -186,6 +188,38 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
   );
 }
 
+const APPROVED_STATUSES = ["APPROVED", "SCHEDULED", "PUBLISHING", "PUBLISHED", "PARTIAL"];
+
+type PublishProps = InstagramPublishState & { storyId: string; isAdmin: boolean; approved: boolean };
+
+/** Estado e botão da publicação direta no Instagram (carrossel PT). */
+function InstagramPublish({ p }: { p: PublishProps }) {
+  const post = p.post;
+  if (post?.status === "published") {
+    return (
+      <p className="alert alert--ok" role="status">
+        <CheckCircle2 className="icon" size={14} aria-hidden="true" /> Publicado no Instagram{post.published_at ? ` em ${fmtDateTime(post.published_at)}` : ""}.
+        {post.external_url && <> <a href={post.external_url} target="_blank" rel="noopener noreferrer">Ver o post</a></>}
+      </p>
+    );
+  }
+  if (post && (post.status === "pending" || post.status === "publishing")) {
+    return <p className="section-hint" role="status">Publicando no Instagram… o executor processa em até 1 minuto. Recarregue para ver o resultado.</p>;
+  }
+  let action: React.ReactNode;
+  if (!p.isAdmin) action = <p className="section-hint">Só administradores publicam no Instagram.</p>;
+  else if (!p.approved) action = <p className="section-hint">Aprove a story para liberar a publicação no Instagram.</p>;
+  else if (!p.account) action = <p className="section-hint">Nenhuma conta do Instagram conectada. <Link href="/admin/integracoes">Conectar em Integrações</Link>.</p>;
+  else action = <PublishInstagramButton storyId={p.storyId} account={p.account} retry={Boolean(post)} />;
+  return (
+    <div className="stack">
+      {post?.status === "failed" && <p className="alert alert--warn" role="alert"><AlertTriangle className="icon" size={14} aria-hidden="true" /> Falhou: {post.last_error}</p>}
+      {post?.status === "skipped" && <p className="section-hint">{post.last_error}</p>}
+      {action}
+    </div>
+  );
+}
+
 const fileName = (a: AssetRow) => `iron-${a.channel}-${a.lang}-${a.kind}-${a.position}.png`;
 
 function Thumb({ a, width }: { a: AssetRow; width: number }) {
@@ -202,7 +236,7 @@ function Thumb({ a, width }: { a: AssetRow; width: number }) {
 }
 
 /** Pacote para download (§4.10 modo manual): imagens + legendas prontas, por rede e idioma. */
-function Creatives({ assets, find }: { assets: AssetRow[]; find: (channel: string, lang: string) => ContentRow | undefined }) {
+function Creatives({ assets, find, publish }: { assets: AssetRow[]; find: (channel: string, lang: string) => ContentRow | undefined; publish: PublishProps }) {
   if (assets.length === 0) {
     return <p className="section-hint">Os criativos ainda não foram gerados. Eles saem em até 1 minuto depois que a story fica pronta ou um texto é editado.</p>;
   }
@@ -225,6 +259,7 @@ function Creatives({ assets, find }: { assets: AssetRow[]; find: (channel: strin
                 <h3 className="section-title">Instagram · carrossel ({ig.length} slides)</h3>
                 <div className="creative-row">{ig.map((a) => <Thumb key={a.position} a={a} width={180} />)}</div>
                 {igCaption && <><p className="pre-wrap creative-text">{igCaption}</p><CopyButton text={igCaption} label="Copiar legenda" /></>}
+                {lang === "pt" && <InstagramPublish p={publish} />}
               </div>
             )}
             {of("linkedin", "card").map((a) => (

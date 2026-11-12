@@ -15,6 +15,8 @@ const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 type AesKey = Awaited<ReturnType<typeof crypto.subtle.importKey>>;
+// Tipo derivado da própria API (funciona com libs DOM, Node e Workers, como em hmac.ts).
+type Bytes = Parameters<typeof crypto.subtle.encrypt>[2];
 
 export class TokenCryptoError extends Error {
   constructor(message: string) {
@@ -45,7 +47,7 @@ async function importKey(keyB64: string | undefined): Promise<AesKey> {
     throw new TokenCryptoError("TOKEN_ENC_KEY não é base64 válido");
   }
   if (raw.length !== 32) throw new TokenCryptoError("TOKEN_ENC_KEY precisa ter 32 bytes (gere com: openssl rand -base64 32)");
-  return crypto.subtle.importKey("raw", raw as BufferSource, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", raw as Bytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
 export async function encryptToken(keyB64: string | undefined, plaintext: string, context: string): Promise<Uint8Array> {
@@ -54,9 +56,9 @@ export async function encryptToken(keyB64: string | undefined, plaintext: string
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const sealed = new Uint8Array(
     await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: iv as BufferSource, additionalData: enc.encode(context) as BufferSource },
+      { name: "AES-GCM", iv: iv as Bytes, additionalData: enc.encode(context) as Bytes },
       key,
-      enc.encode(plaintext) as BufferSource,
+      enc.encode(plaintext) as Bytes,
     ),
   );
   const out = new Uint8Array(1 + IV_BYTES + sealed.length);
@@ -71,9 +73,9 @@ export async function decryptToken(keyB64: string | undefined, data: Uint8Array,
   const key = await importKey(keyB64);
   try {
     const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: data.subarray(1, 1 + IV_BYTES) as BufferSource, additionalData: enc.encode(context) as BufferSource },
+      { name: "AES-GCM", iv: data.subarray(1, 1 + IV_BYTES) as Bytes, additionalData: enc.encode(context) as Bytes },
       key,
-      data.subarray(1 + IV_BYTES) as BufferSource,
+      data.subarray(1 + IV_BYTES) as Bytes,
     );
     return dec.decode(plain);
   } catch {
