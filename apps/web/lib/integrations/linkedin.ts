@@ -61,6 +61,25 @@ export function linkedinConfig(target: LinkedinTarget, env: Record<string, strin
   };
 }
 
+/**
+ * Diagnóstico da configuração, só com NOMES de variáveis (nunca valores): o que falta ou está em
+ * formato inválido. A tela de Integrações mostra esta lista para o admin corrigir na Vercel.
+ */
+export function linkedinEnvProblems(target: LinkedinTarget, env: Record<string, string | undefined>): string[] {
+  const prefix = target === "member" ? "LINKEDIN" : "LINKEDIN_ORG";
+  const problems: string[] = [];
+  const check = (name: string, ok: (v: string) => boolean, rule: string) => {
+    const v = env[name]?.trim();
+    if (!v) problems.push(`${name} (ausente)`);
+    else if (!ok(v)) problems.push(`${name} (${rule})`);
+  };
+  check(`${prefix}_CLIENT_ID`, (v) => /^[A-Za-z0-9]{6,40}$/.test(v), "formato inválido: só letras e números");
+  check(`${prefix}_CLIENT_SECRET`, () => true, "");
+  check("TOKEN_ENC_KEY", () => true, "");
+  check("OAUTH_STATE_SECRET", (v) => v.length >= 32, "mínimo 32 caracteres");
+  return problems;
+}
+
 export function authorizeUrl(cfg: LinkedinConfig, state: string): string {
   const u = new URL("https://www.linkedin.com/oauth/v2/authorization");
   u.searchParams.set("response_type", "code");

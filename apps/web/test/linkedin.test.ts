@@ -85,3 +85,17 @@ describe("connectWithCode: página", () => {
     await expect(connectWithCode(org(), "C", fake(routes([])).f)).rejects.toMatchObject({ code: "no_org" });
   });
 });
+
+describe("linkedinEnvProblems (diagnóstico sem valores)", () => {
+  const ok = { LINKEDIN_CLIENT_ID: "86abc123", LINKEDIN_CLIENT_SECRET: "s", TOKEN_ENC_KEY: "k", OAUTH_STATE_SECRET: "x".repeat(32) };
+  it("lista só nomes, e nada quando está tudo certo", async () => {
+    const { linkedinEnvProblems } = await import("../lib/integrations/linkedin");
+    expect(linkedinEnvProblems("member", ok)).toEqual([]);
+    expect(linkedinEnvProblems("member", { ...ok, OAUTH_STATE_SECRET: "curto", LINKEDIN_CLIENT_SECRET: " " })).toEqual([
+      "LINKEDIN_CLIENT_SECRET (ausente)", "OAUTH_STATE_SECRET (mínimo 32 caracteres)",
+    ]);
+    expect(linkedinEnvProblems("member", { ...ok, LINKEDIN_CLIENT_ID: "abc-123" })[0]).toMatch(/^LINKEDIN_CLIENT_ID \(formato/);
+    expect(linkedinEnvProblems("organization", ok)).toEqual(["LINKEDIN_ORG_CLIENT_ID (ausente)", "LINKEDIN_ORG_CLIENT_SECRET (ausente)"]);
+    expect(JSON.stringify(linkedinEnvProblems("member", { ...ok, OAUTH_STATE_SECRET: "segredo" }))).not.toContain("segredo\"");
+  });
+});
