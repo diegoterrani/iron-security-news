@@ -68,3 +68,14 @@ export async function publishInstagram(_prev: ActionState, form: FormData): Prom
   const r = await call("review_publish_instagram", { p_story: id.data, p_lang: "pt" }, id.data);
   return r.ok ? { ok: true, message: "Publicação pedida. O executor publica em até 1 minuto; recarregue para ver o link." } : r;
 }
+
+const LinkedinTarget = z.enum(["member", "organization"]);
+
+/** Pede a publicação do post PT no LinkedIn (perfil ou página). Admin + MFA + story aprovada + conta conectada: checado no banco. */
+export async function publishLinkedin(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const id = Uuid.safeParse(form.get("story_id"));
+  const target = LinkedinTarget.safeParse(form.get("target"));
+  if (!id.success || !target.success) return { ok: false, message: "Pedido inválido." };
+  const r = await call("review_publish_linkedin", { p_story: id.data, p_target: target.data, p_lang: "pt" }, id.data);
+  return r.ok ? { ok: true, message: "Publicação pedida. O executor publica em até 1 minuto; recarregue para ver o link." } : r;
+}

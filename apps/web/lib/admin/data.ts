@@ -154,3 +154,27 @@ export async function getInstagramPublish(storyId: string): Promise<InstagramPub
   const valid = ig && ig.status === "active" && (!ig.expires_at || new Date(ig.expires_at).getTime() > Date.now());
   return { account: valid ? ig.account_name : null, post: (posts.data as InstagramPublishState["post"]) ?? null };
 }
+
+export type LinkedinPublishState = Record<"member" | "organization", InstagramPublishState>;
+
+/** Estado da publicação do post PT no LinkedIn, no perfil e na página (cada alvo tem conta e post próprios). */
+export async function getLinkedinPublish(storyId: string): Promise<LinkedinPublishState> {
+  const supabase = await createClient();
+  const [integrations, posts] = await Promise.all([
+    supabase.rpc("integrations_list"),
+    supabase.from("channel_posts").select("target, status, last_error, external_url, published_at")
+      .eq("story_id", storyId).eq("channel", "linkedin").eq("lang", "pt"),
+  ]);
+  const rows = (integrations.data ?? []) as { channel: string; lang: string; target: string; account_name: string; status: string; expires_at: string | null }[];
+  const postRows = (posts.data ?? []) as (NonNullable<InstagramPublishState["post"]> & { target: string })[];
+  const state = (target: "member" | "organization"): InstagramPublishState => {
+    const r = rows.find((x) => x.channel === "linkedin" && x.lang === "pt" && x.target === target);
+    const valid = r && r.status === "active" && (!r.expires_at || new Date(r.expires_at).getTime() > Date.now());
+    const p = postRows.find((x) => x.target === target);
+    return {
+      account: valid ? r.account_name : null,
+      post: p ? { status: p.status, last_error: p.last_error, external_url: p.external_url, published_at: p.published_at } : null,
+    };
+  };
+  return { member: state("member"), organization: state("organization") };
+}
