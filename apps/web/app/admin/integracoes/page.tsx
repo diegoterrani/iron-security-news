@@ -4,7 +4,7 @@ import { getViewer, rpcErrorMessage } from "@/lib/admin/data";
 import { fmtDateTime } from "@/lib/admin/labels";
 import { CONNECT_ERROR_MESSAGE, INSTAGRAM_SCOPES } from "@/lib/integrations/instagram";
 import { LINKEDIN_ERROR_MESSAGE, LINKEDIN_SCOPES, TARGET_SLUG, type LinkedinTarget } from "@/lib/integrations/linkedin";
-import { instagramServerEnv, linkedinServerEnv, tokenOnlyEnv } from "@/lib/integrations/server";
+import { instagramServerEnv, linkedinMissingEnv, linkedinServerEnv, tokenOnlyEnv } from "@/lib/integrations/server";
 import { createClient } from "@/lib/supabase/server";
 import { DisconnectForm } from "./DisconnectForm";
 import { TokenForm } from "./TokenForm";
@@ -154,9 +154,9 @@ function LinkedinAccount({ target, row, isAdmin, now }: { target: LinkedinTarget
       )}
       <p className="section-hint">{label.hint} Permissões pedidas: <span className="mono">{LINKEDIN_SCOPES[target].join(", ")}</span>.</p>
       {!configured && (
-        <p className="alert alert--warn"><AlertTriangle className="icon" size={14} aria-hidden="true" /> {target === "member"
-          ? "Falta configurar na Vercel: LINKEDIN_CLIENT_ID e LINKEDIN_CLIENT_SECRET (além de TOKEN_ENC_KEY e OAUTH_STATE_SECRET)."
-          : "Falta configurar na Vercel: LINKEDIN_ORG_CLIENT_ID e LINKEDIN_ORG_CLIENT_SECRET (app com a Community Management API)."}</p>
+        <p className="alert alert--warn"><AlertTriangle className="icon" size={14} aria-hidden="true" /> Falta configurar na Vercel (Production) e fazer Redeploy:{" "}
+          {(() => { const m = linkedinMissingEnv(target); return m.length ? m.join(", ") : "variáveis presentes, mas a configuração foi recusada"; })()}.
+          {target === "organization" && " App com a Community Management API."}</p>
       )}
       {isAdmin && (configured || active) && (
         <div className="review-actions">

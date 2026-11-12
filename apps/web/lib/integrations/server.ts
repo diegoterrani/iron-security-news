@@ -1,7 +1,7 @@
 // Só servidor: lê segredos de process.env (nunca importar em componente "use client").
 import { siteUrl } from "@/lib/supabase/env";
 import { instagramConfig, type InstagramConfig } from "./instagram";
-import { linkedinConfig, type LinkedinConfig, type LinkedinTarget } from "./linkedin";
+import { linkedinConfig, linkedinEnvProblems, type LinkedinConfig, type LinkedinTarget } from "./linkedin";
 
 /** Tudo que a conexão do Instagram precisa no servidor. `null` = falta configurar (a tela avisa). */
 export interface InstagramServerEnv {
@@ -36,7 +36,10 @@ export interface LinkedinServerEnv {
 export function linkedinServerEnv(target: LinkedinTarget): LinkedinServerEnv | null {
   const li = linkedinConfig(target, process.env, siteUrl());
   const tokenKey = process.env.TOKEN_ENC_KEY;
-  const stateSecret = process.env.OAUTH_STATE_SECRET;
+  const stateSecret = process.env.OAUTH_STATE_SECRET?.trim();
   if (!li || !tokenKey || !stateSecret || stateSecret.length < 32) return null;
   return { li, tokenKey, stateSecret };
 }
+
+/** Nomes das variáveis que faltam (ou estão inválidas) para o alvo. Nunca devolve valores. */
+export const linkedinMissingEnv = (target: LinkedinTarget): string[] => linkedinEnvProblems(target, process.env);
