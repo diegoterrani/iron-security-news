@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Download, ExternalLink } from "lucide-react";
+import { socialPostParts, socialPostText, type SocialChannel } from "@ironnews/shared";
 import { SeverityBadge } from "@/components/SeverityBadge";
 import { canEdit, getAssets, getInstagramPublish, getStory, getViewer, type AssetRow, type ContentRow, type InstagramPublishState } from "@/lib/admin/data";
 import { CATEGORY_LABEL, CHANNEL_LABEL, SEVERITY_LABEL, STATUS_LABEL, fmtDateTime } from "@/lib/admin/labels";
@@ -119,8 +120,7 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
         preview = (
           <>
             <ol className="slides">{slides.map((s, i) => <li key={i}><strong>{s.heading}</strong><br />{s.body}</li>)}</ol>
-            <p className="pre-wrap">{str(b.caption)}</p>
-            <p className="mono">{list(b.hashtags).join(" ")}</p>
+            <PostPreview channel="instagram" lang={lang} body={b} />
             <p className="section-hint">Alt text: {str(b.alt_text)}</p>
           </>
         );
@@ -130,15 +130,15 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
           <>
             <p><strong>{c.title}</strong> · gancho: “{str(b.on_screen_hook)}”</p>
             <p className="pre-wrap">{str(b.script)}</p>
-            <p className="section-hint">{str(b.description)}</p>
+            <p className="section-title">Descrição do Short</p>
+            <PostPreview channel="youtube" lang={lang} body={b} />
           </>
         );
         field = { name: "script", label: "Roteiro", value: str(b.script), rows: 10 };
       } else {
         preview = (
           <>
-            <p className="pre-wrap">{str(b.text)}</p>
-            {list(b.hashtags).length > 0 && <p className="mono">{list(b.hashtags).join(" ")}</p>}
+            <PostPreview channel={tab} lang={lang} body={b} />
           </>
         );
         field = { name: "text", label: "Texto", value: str(b.text), rows: 10 };
@@ -244,6 +244,21 @@ function Thumb({ a, width }: { a: AssetRow; width: number }) {
   );
 }
 
+/** Post como vai ao ar: texto + CTA padrão (anexado pelo sistema, não editável aqui) + hashtags. */
+function PostPreview({ channel, lang, body }: { channel: SocialChannel; lang: "pt" | "en"; body: Record<string, unknown> }) {
+  const p = socialPostParts(channel, lang, body);
+  return (
+    <>
+      {p.text && <p className="pre-wrap">{p.text}</p>}
+      <div className="post-cta">
+        <span className="post-cta__label">CTA padrão · adicionado automaticamente</span>
+        <p className="pre-wrap">{p.cta}</p>
+      </div>
+      {p.hashtags && <p className="mono">{p.hashtags}</p>}
+    </>
+  );
+}
+
 const PENDING = "Criativo ainda não gerado: sai em até 1 minuto depois que a story fica pronta ou um texto é editado.";
 
 /** Criativo(s) da rede na própria aba: imagens para baixar, texto pronto para copiar e, no Instagram PT, a publicação. */
@@ -252,24 +267,25 @@ function ChannelCreatives({ channel, lang, assets, c, publish }: {
 }) {
   const of = (ch: string, kind: string) => assets.filter((a) => a.lang === lang && a.channel === ch && a.kind === kind);
   const text = (field: string) => (typeof c.body[field] === "string" ? (c.body[field] as string) : "");
-  const tags = Array.isArray(c.body.hashtags) ? (c.body.hashtags as string[]).join(" ") : "";
-  const ready = (field: string) => [text(field), tags].filter(Boolean).join("\n\n");
+  const ready = () => socialPostText(channel as SocialChannel, lang, c.body);
+  let extra: { text: string; label: string } | null = null;
   let images: AssetRow[] = [];
   let width = 360;
   let copy: { text: string; label: string } | null = null;
   let label = "";
   if (channel === "instagram") {
     images = of("instagram", "carousel_slide"); width = 180; label = `Carrossel (${images.length} slides)`;
-    copy = { text: ready("caption"), label: "Copiar legenda" };
+    copy = { text: ready(), label: "Copiar legenda" };
   } else if (channel === "linkedin") {
     images = of("linkedin", "card"); width = 420; label = "Card";
-    copy = { text: ready("text"), label: "Copiar texto" };
+    copy = { text: ready(), label: "Copiar texto" };
   } else if (channel === "facebook") {
     images = of("instagram", "carousel_slide").slice(0, 1); width = 300; label = "Imagem (1º slide do carrossel)";
-    copy = { text: ready("text"), label: "Copiar texto" };
+    copy = { text: ready(), label: "Copiar texto" };
   } else if (channel === "youtube") {
     images = of("youtube", "thumbnail"); width = 150; label = "Capa do Short";
-    copy = { text: text("script"), label: "Copiar roteiro" };
+    copy = { text: ready(), label: "Copiar descrição" };
+    extra = { text: text("script"), label: "Copiar roteiro" };
   } else if (channel === "blog") {
     images = of("blog", "cover"); width = 420; label = "Capa do blog / compartilhamento";
   }
@@ -279,7 +295,12 @@ function ChannelCreatives({ channel, lang, assets, c, publish }: {
       {images.length === 0 ? <p className="section-hint">{PENDING}</p> : (
         <div className="creative-row">{images.map((a) => <Thumb key={a.position} a={a} width={width} />)}</div>
       )}
-      {copy?.text && <CopyButton text={copy.text} label={copy.label} />}
+      {(copy?.text || extra?.text) && (
+        <div className="chips">
+          {copy?.text && <CopyButton text={copy.text} label={copy.label} />}
+          {extra?.text && <CopyButton text={extra.text} label={extra.label} />}
+        </div>
+      )}
       {channel === "instagram" && lang === "pt" && publish && <InstagramPublish p={publish} />}
     </div>
   );
@@ -290,17 +311,16 @@ function Creatives({ assets, find, publish }: { assets: AssetRow[]; find: (chann
   if (assets.length === 0) {
     return <p className="section-hint">Os criativos ainda não foram gerados. Eles saem em até 1 minuto depois que a story fica pronta ou um texto é editado.</p>;
   }
-  const text = (c: ContentRow | undefined, field: string) => (c && typeof c.body[field] === "string" ? (c.body[field] as string) : "");
-  const tags = (c: ContentRow | undefined) => (c && Array.isArray(c.body.hashtags) ? (c.body.hashtags as string[]).join(" ") : "");
   return (
     <div className="stack">
       {(["pt", "en"] as const).map((lang) => {
         const of = (channel: string, kind: string) => assets.filter((a) => a.lang === lang && a.channel === channel && a.kind === kind);
         const ig = of("instagram", "carousel_slide");
         if (!assets.some((a) => a.lang === lang)) return null;
-        const igCaption = [text(find("instagram", lang), "caption"), tags(find("instagram", lang))].filter(Boolean).join("\n\n");
-        const liText = [text(find("linkedin", lang), "text"), tags(find("linkedin", lang))].filter(Boolean).join("\n\n");
-        const fbText = text(find("facebook", lang), "text");
+        const post = (ch: SocialChannel) => { const c = find(ch, lang); return c ? socialPostText(ch, lang, c.body) : ""; };
+        const igCaption = post("instagram");
+        const liText = post("linkedin");
+        const fbText = post("facebook");
         return (
           <section key={lang} className="channel-block" aria-label={`Criativos ${lang.toUpperCase()}`}>
             <h2 className="section-title">{lang === "pt" ? "Português" : "English"}</h2>

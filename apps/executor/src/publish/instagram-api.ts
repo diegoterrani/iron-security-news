@@ -139,16 +139,20 @@ export async function refreshLongLivedToken(deps: Pick<IgApiDeps, "fetchImpl">, 
   return { token: t, expiresIn };
 }
 
-/** Legenda dentro dos limites do Instagram: até 2.200 caracteres e 30 hashtags. */
-export function buildCaption(caption: string, hashtags: string[]): string {
+/**
+ * Legenda dentro dos limites do Instagram (2.200 caracteres, 30 hashtags): texto + CTA padrão + hashtags.
+ * Se faltar espaço, encurta só o texto: o CTA e as hashtags ficam inteiros.
+ */
+export function buildCaption(caption: string, hashtags: string[], cta = ""): string {
   const tags = [...new Set(hashtags.filter((h) => /^#\w+$/u.test(h)))].slice(0, 30);
   const inCaption = (caption.match(/#\w+/gu) ?? []).length;
   const room = Math.max(0, 30 - inCaption);
   const tagLine = tags.slice(0, room).join(" ");
   const max = 2200;
+  const tail = [cta.trim(), tagLine].filter(Boolean).join("\n\n");
   const body = caption.trim();
-  if (!tagLine) return body.slice(0, max);
-  const reserved = tagLine.length + 2;
+  if (!tail) return body.slice(0, max);
+  const reserved = tail.length + 2;
   const text = body.length + reserved > max ? `${body.slice(0, Math.max(0, max - reserved - 1)).trimEnd()}…` : body;
-  return `${text}\n\n${tagLine}`;
+  return text ? `${text}\n\n${tail}` : tail;
 }
