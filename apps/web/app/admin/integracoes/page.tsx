@@ -35,7 +35,8 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   const canPasteToken = tokenOnlyEnv() !== null; // token colado (Unified login)
   const now = Date.now();
   const expiresInDays = ig?.expires_at ? Math.floor((new Date(ig.expires_at).getTime() - now) / DAY_MS) : null;
-  const connected = ig?.status === "active" && expiresInDays !== null && expiresInDays >= 0;
+  // Token sem validade (usuário do sistema, EAA…) fica conectado até ser revogado ou desconectado.
+  const connected = ig?.status === "active" && (expiresInDays === null || expiresInDays >= 0);
 
   return (
     <>
@@ -60,9 +61,10 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
             <>
               <p><strong>@{ig!.account_name}</strong> <span className="chip chip--ok">Conectada</span></p>
               <p className="section-hint">
-                Token válido até {fmtDateTime(ig!.expires_at!)} ({expiresInDays} dias). Conectada em {fmtDateTime(ig!.updated_at)}.
+                {expiresInDays === null ? "Token sem data de validade (usuário do sistema)." : `Token válido até ${fmtDateTime(ig!.expires_at!)} (${expiresInDays} dias).`}{" "}
+                Conectada em {fmtDateTime(ig!.updated_at)}.
               </p>
-              {expiresInDays! < 7 && (
+              {expiresInDays !== null && expiresInDays < 7 && (
                 <p className="alert alert--warn"><AlertTriangle className="icon" size={14} aria-hidden="true" /> O token vence em menos de 7 dias. Reconecte para renovar.</p>
               )}
             </>

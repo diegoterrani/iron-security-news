@@ -1,10 +1,12 @@
 /**
- * Cliente mínimo da Instagram API com login do Instagram (graph.instagram.com), §8.4.
+ * Cliente mínimo da API de publicação do Instagram (graph.instagram.com ou graph.facebook.com), §8.4.
  * Só o que a publicação de carrossel e a renovação do token precisam. O token vai no header
  * Authorization (não na URL), então não aparece em log de proxy nem em mensagem de erro.
  */
 export interface IgApiDeps {
   graphVersion: string;
+  /** "instagram" = token IGAA (graph.instagram.com); "facebook" = token EAA de usuário do sistema (graph.facebook.com). */
+  host?: "instagram" | "facebook";
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -32,6 +34,7 @@ export class IgApiError extends Error {
 
 const TIMEOUT_MS = 20_000;
 const BASE = "https://graph.instagram.com";
+const hostBase = (h: IgApiDeps["host"]) => (h === "facebook" ? "https://graph.facebook.com" : BASE);
 
 /** Remove qualquer coisa parecida com token de uma mensagem antes de gravar/logar. */
 export function scrub(msg: string): string {
@@ -41,7 +44,8 @@ export function scrub(msg: string): string {
 async function call(
   deps: IgApiDeps, token: string, method: "GET" | "POST", path: string, params: Record<string, string> = {},
 ): Promise<Record<string, unknown>> {
-  const url = new URL(`${BASE}/${deps.graphVersion}/${path}`);
+  // Os endpoints de publicação (/{ig-user-id}/media, media_publish, status_code) são iguais nos dois hosts.
+  const url = new URL(`${hostBase(deps.host)}/${deps.graphVersion}/${path}`);
   const init: RequestInit = {
     method,
     headers: { Authorization: `Bearer ${token}` },
