@@ -159,7 +159,7 @@ describe("fetchSource", () => {
     await expect(fetchSource(src, { now }, fake)).rejects.toThrow(/503/);
   });
   it("tipo sem coletor falha explicitamente", async () => {
-    await expect(fetchSource({ ...src, kind: "ransomware_live" }, { now })).rejects.toThrow(/sem coletor/);
+    await expect(fetchSource({ ...src, kind: "json_api" }, { now })).rejects.toThrow(/sem coletor/);
   });
 });
 
