@@ -97,8 +97,8 @@ export async function publishDueInstagramPosts(deps: InstagramPublishDeps): Prom
 
 async function publishOne(deps: InstagramPublishDeps, p: ClaimedPost): Promise<"dry-run" | { mediaId: string; permalink: string | null }> {
   const { pool } = deps;
-  const { rows: [integ] } = await pool.query<{ account_id: string; access_token_enc: Buffer; status: string; expires_at: Date | null }>(
-    "select account_id, access_token_enc, status, expires_at from integrations where id = $1",
+  const { rows: [integ] } = await pool.query<{ account_id: string; access_token_enc: Buffer; status: string; expires_at: Date | null; meta: Record<string, unknown> }>(
+    "select account_id, access_token_enc, status, expires_at, meta from integrations where id = $1",
     [p.integration_id],
   );
   if (!integ || integ.status !== "active" || (integ.expires_at && integ.expires_at <= new Date())) {
@@ -136,7 +136,8 @@ async function publishOne(deps: InstagramPublishDeps, p: ClaimedPost): Promise<"
   } catch (err) {
     throw new PublishError(err instanceof TokenCryptoError ? "Não foi possível ler o token salvo (TOKEN_ENC_KEY do executor diferente da Vercel?)." : "Erro ao ler o token.");
   }
-  return publishCarousel(deps.api, { igUserId: integ.account_id, token, imageUrls, caption });
+  const host = integ.meta?.api_host === "facebook" ? "facebook" : "instagram";
+  return publishCarousel({ ...deps.api, host }, { igUserId: integ.account_id, token, imageUrls, caption });
 }
 
 /** Converte o slide para JPEG uma vez e guarda a URL em assets.meta (as próximas publicações reaproveitam). */
@@ -201,6 +202,7 @@ export async function refreshInstagramTokens(deps: Pick<InstagramPublishDeps, "p
   const { rows } = await pool.query<{ id: string; account_id: string; access_token_enc: Buffer }>(
     `select id, account_id, access_token_enc from integrations
       where channel = 'instagram' and status = 'active' and expires_at is not null
+        and coalesce(meta->>'api_host', 'instagram') = 'instagram'
         and expires_at > now() and expires_at < now() + interval '10 days' and updated_at < now() - interval '24 hours'`,
   );
   let n = 0;

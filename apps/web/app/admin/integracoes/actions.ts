@@ -33,10 +33,11 @@ export async function saveInstagramToken(_prev: ActionState, form: FormData): Pr
   const env = tokenOnlyEnv();
   if (!env) return { ok: false, message: "TOKEN_ENC_KEY não está configurada no servidor." };
   const token = String(form.get("token") ?? "").trim();
+  const igUserId = String(form.get("ig_user_id") ?? "").trim() || null;
 
   let account;
   try {
-    account = await accountFromToken(env.graphVersion, token);
+    account = await accountFromToken(env.graphVersion, token, igUserId);
   } catch (err) {
     const code = err instanceof InstagramError ? err.code : "network";
     console.error(JSON.stringify({ module: "integrations", channel: "instagram", event: "manual_token_failed", code }));
@@ -51,9 +52,10 @@ export async function saveInstagramToken(_prev: ActionState, form: FormData): Pr
     p_account_id: account.accountId,
     p_account_name: account.username,
     p_token_enc: bytesToBase64(sealed),
-    p_expires_at: account.expiresAt.toISOString(),
+    p_expires_at: account.expiresAt ? account.expiresAt.toISOString() : null,
     p_scopes: account.scopes,
-    p_meta: { account_type: account.accountType, token_kind: "instagram_dashboard_token" },
+    // api_host diz ao executor em qual Graph API publicar (graph.instagram.com ou graph.facebook.com).
+    p_meta: { account_type: account.accountType, token_kind: `${account.host}_dashboard_token`, api_host: account.host },
   });
   if (error) return { ok: false, message: rpcErrorMessage(error.message) };
   console.info(JSON.stringify({ module: "integrations", channel: "instagram", event: "connected_manual", account: account.username }));

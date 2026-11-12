@@ -97,3 +97,17 @@ describe("buildCaption / scrub", () => {
     expect(scrub("falhou access_token=abc123&x=1 e IGAAbcdefghijklmnopqrstuvwxyz")).toBe("falhou access_token=***&x=1 e IG***");
   });
 });
+
+describe("publishCarousel com token do Facebook (usuário do sistema)", () => {
+  it("usa graph.facebook.com com os mesmos endpoints", async () => {
+    const { f, calls } = graph((c) => {
+      if (c.url.pathname.endsWith("/media_publish")) return { id: "3" };
+      if (c.url.pathname.endsWith("/media")) return { id: "2" };
+      if (c.url.pathname.endsWith("/3")) return { permalink: "https://www.instagram.com/p/x/" };
+      return { status_code: "FINISHED" };
+    });
+    await publishCarousel({ ...deps(f), host: "facebook" }, { igUserId: "178", token: "EAAx", imageUrls: IMGS, caption: "c" });
+    expect(calls.every((c) => c.url.host === "graph.facebook.com")).toBe(true);
+    expect(calls.some((c) => c.url.pathname === "/v23.0/178/media_publish")).toBe(true);
+  });
+});
