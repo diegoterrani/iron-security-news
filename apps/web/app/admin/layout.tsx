@@ -39,7 +39,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     title: "Configuração",
     items: [
       { label: "Avatares HeyGen", icon: Video },
-      { label: "Integrações", icon: Plug },
+      { label: "Integrações", icon: Plug, href: "/admin/integracoes" },
       { label: "Usuários", icon: Users },
       { label: "Segurança", icon: KeyRound },
     ],
