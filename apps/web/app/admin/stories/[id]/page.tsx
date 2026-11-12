@@ -61,16 +61,24 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
   const find = (channel: string, lang: string) => contents.find((c) => c.channel === channel && c.lang === lang);
   const fg = story.fact_guard;
 
+  // Criativos: aparecem na aba da própria rede (e a capa nas abas de artigo); "Criativos" reúne tudo.
+  const needsAssets = tab !== "fontes" && tab !== "fatos";
+  const [assets, igPublish] = needsAssets
+    ? await Promise.all([getAssets(story.id), tab === "criativos" || tab === "instagram" ? getInstagramPublish(story.id) : null])
+    : [[] as AssetRow[], null];
+  const publish: PublishProps | null = igPublish
+    ? { storyId: story.id, isAdmin: viewer?.role === "admin", approved: APPROVED_STATUSES.includes(story.status), ...igPublish }
+    : null;
+
   let body: React.ReactNode = null;
   if (tab === "criativos") {
-    const [assets, igPublish] = await Promise.all([getAssets(story.id), getInstagramPublish(story.id)]);
-    const publish = { storyId: story.id, isAdmin: viewer?.role === "admin", approved: APPROVED_STATUSES.includes(story.status), ...igPublish };
-    body = <Creatives assets={assets} find={find} publish={publish} />;
+    body = <Creatives assets={assets} find={find} publish={publish!} />;
   } else if (tab === "pt" || tab === "en") {
     const a = find("blog", tab);
     body = !a ? <p className="section-hint">Sem artigo neste idioma.</p> : (
       <>
         <Meta c={a} />
+        <ChannelCreatives channel="blog" lang={tab} assets={assets} c={a} publish={null} />
         <h2 className="article-title">{a.title}</h2>
         <p className="article-tldr"><strong>TL;DR:</strong> {str(a.body.tldr)}</p>
         <p className="section-hint">Meta description: {str(a.body.meta_description)}</p>
@@ -139,6 +147,7 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
         <div key={lang} className="channel-block">
           <h3 className="section-title">{CHANNEL_LABEL[tab]} · {lang.toUpperCase()}</h3>
           <Meta c={c} />
+          <ChannelCreatives channel={tab} lang={lang} assets={assets} c={c} publish={publish} />
           {preview}
           {editable && <EditForm storyId={story.id} channel={c.channel} lang={lang} kind={c.kind} fields={[field]} />}
         </div>
@@ -232,6 +241,47 @@ function Thumb({ a, width }: { a: AssetRow; width: number }) {
         <Download className="icon" size={14} aria-hidden="true" /> {a.width}×{a.height}
       </a>
     </figure>
+  );
+}
+
+const PENDING = "Criativo ainda não gerado: sai em até 1 minuto depois que a story fica pronta ou um texto é editado.";
+
+/** Criativo(s) da rede na própria aba: imagens para baixar, texto pronto para copiar e, no Instagram PT, a publicação. */
+function ChannelCreatives({ channel, lang, assets, c, publish }: {
+  channel: string; lang: "pt" | "en"; assets: AssetRow[]; c: ContentRow; publish: PublishProps | null;
+}) {
+  const of = (ch: string, kind: string) => assets.filter((a) => a.lang === lang && a.channel === ch && a.kind === kind);
+  const text = (field: string) => (typeof c.body[field] === "string" ? (c.body[field] as string) : "");
+  const tags = Array.isArray(c.body.hashtags) ? (c.body.hashtags as string[]).join(" ") : "";
+  const ready = (field: string) => [text(field), tags].filter(Boolean).join("\n\n");
+  let images: AssetRow[] = [];
+  let width = 360;
+  let copy: { text: string; label: string } | null = null;
+  let label = "";
+  if (channel === "instagram") {
+    images = of("instagram", "carousel_slide"); width = 180; label = `Carrossel (${images.length} slides)`;
+    copy = { text: ready("caption"), label: "Copiar legenda" };
+  } else if (channel === "linkedin") {
+    images = of("linkedin", "card"); width = 420; label = "Card";
+    copy = { text: ready("text"), label: "Copiar texto" };
+  } else if (channel === "facebook") {
+    images = of("instagram", "carousel_slide").slice(0, 1); width = 300; label = "Imagem (1º slide do carrossel)";
+    copy = { text: ready("text"), label: "Copiar texto" };
+  } else if (channel === "youtube") {
+    images = of("youtube", "thumbnail"); width = 150; label = "Capa do Short";
+    copy = { text: text("script"), label: "Copiar roteiro" };
+  } else if (channel === "blog") {
+    images = of("blog", "cover"); width = 420; label = "Capa do blog / compartilhamento";
+  }
+  return (
+    <div className="creative-group">
+      <h4 className="section-title">Criativo · {label}</h4>
+      {images.length === 0 ? <p className="section-hint">{PENDING}</p> : (
+        <div className="creative-row">{images.map((a) => <Thumb key={a.position} a={a} width={width} />)}</div>
+      )}
+      {copy?.text && <CopyButton text={copy.text} label={copy.label} />}
+      {channel === "instagram" && lang === "pt" && publish && <InstagramPublish p={publish} />}
+    </div>
   );
 }
 
