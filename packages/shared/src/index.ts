@@ -7,3 +7,4 @@ export * from "./prompts/triage";
 export * from "./prompts/writer";
 export * from "./prompts/derivatives";
 export * from "./prompts/image";
+export * from "./cta";

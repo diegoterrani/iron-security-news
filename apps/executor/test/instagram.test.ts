@@ -98,6 +98,15 @@ describe("buildCaption / scrub", () => {
   });
 });
 
+describe("buildCaption com CTA", () => {
+  it("encurta só o texto; CTA e hashtags ficam inteiros", () => {
+    const cta = "Quer entender o caso completo? Link na Bio.";
+    const c = buildCaption("x".repeat(3000), ["#ciber"], cta);
+    expect(c.length).toBeLessThanOrEqual(2200);
+    expect(c.endsWith(`${cta}\n\n#ciber`)).toBe(true);
+  });
+});
+
 describe("publishCarousel com token do Facebook (usuário do sistema)", () => {
   it("usa graph.facebook.com com os mesmos endpoints", async () => {
     const { f, calls } = graph((c) => {

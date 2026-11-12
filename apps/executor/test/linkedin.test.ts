@@ -119,3 +119,13 @@ describe("scrub", () => {
     expect(scrub(`falhou com AQ${"x".repeat(40)} e access_token=abc`)).toBe("falhou com AQ*** e access_token=***");
   });
 });
+
+describe("buildCommentary com CTA", () => {
+  it("CTA (escapado) entre o texto e as hashtags; o limite encurta só o texto", () => {
+    const cta = "Leia no blog - https://news.iron-security.com/";
+    expect(buildCommentary("Texto.", ["#CISA"], cta)).toBe(`Texto.\n\n${cta}\n\n{hashtag|\\#|CISA}`);
+    const long = buildCommentary("x".repeat(3500), ["#CISA"], cta);
+    expect(long.length).toBeLessThanOrEqual(3000);
+    expect(long.endsWith(`${cta}\n\n{hashtag|\\#|CISA}`)).toBe(true);
+  });
+});

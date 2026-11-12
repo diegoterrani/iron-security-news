@@ -960,3 +960,8 @@ code,
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
 }
+
+/* CTA padrão das redes (anexado pelo sistema) */
+.post-cta { display: grid; gap: 6px; margin: 12px 0; padding: 12px 14px; border-left: 2px solid var(--color-accent, #6f9e89); background: var(--color-bg-input); }
+.post-cta__label { font-family: var(--font-mono, "IBM Plex Mono", monospace); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary, #93bda9); }
+.post-cta p { margin: 0; }

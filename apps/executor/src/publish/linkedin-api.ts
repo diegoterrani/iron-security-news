@@ -136,10 +136,11 @@ export async function createPost(deps: LiApiDeps, input: PostInput): Promise<{ p
 const RESERVED = /[\\|{}@[\]()<>#*_~]/g;
 export const escapeLittleText = (s: string) => s.replace(RESERVED, (c) => `\\${c}`);
 
-export function buildCommentary(text: string, hashtags: string[]): string {
+/** Texto + CTA padrão + hashtags. Se passar do limite, encurta só o texto: CTA e hashtags ficam inteiros. */
+export function buildCommentary(text: string, hashtags: string[], cta = ""): string {
   // Só letras e números dentro do template (o "_" é reservado no little text).
   const tags = [...new Set(hashtags.map((h) => h.replace(/^#/, "").replace(/_/g, "")).filter((h) => /^[\p{L}\p{N}]+$/u.test(h)))].slice(0, 5);
-  const tagLine = tags.map((t) => `{hashtag|\\#|${t}}`).join(" ");
+  const tagLine = [cta.trim() ? escapeLittleText(cta.trim()) : "", tags.map((t) => `{hashtag|\\#|${t}}`).join(" ")].filter(Boolean).join("\n\n");
   const max = 3000;
   const reserved = tagLine ? tagLine.length + 2 : 0;
   let body = escapeLittleText(text.trim());

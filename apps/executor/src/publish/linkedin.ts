@@ -1,4 +1,4 @@
-import { decryptToken, encryptToken, TokenCryptoError } from "@ironnews/shared";
+import { decryptToken, encryptToken, socialPostParts, TokenCryptoError } from "@ironnews/shared";
 import type { Pool } from "../db";
 import type { Logger } from "../logger";
 import type { StorageConfig } from "../render/storage";
@@ -108,7 +108,9 @@ async function publishOne(deps: LinkedinPublishDeps, p: ClaimedPost): Promise<"d
     "select title from latest_contents where story_id = $1 and channel = 'blog' and lang = $2 and kind = 'article'",
     [p.story_id, p.lang],
   );
-  const commentary = buildCommentary(content.body.text, Array.isArray(content.body.hashtags) ? content.body.hashtags.map(String) : []);
+  // Texto da IA (sem o convite antigo) + CTA padrão com os links + hashtags.
+  const parts = socialPostParts("linkedin", p.lang, content.body);
+  const commentary = buildCommentary(parts.text, Array.isArray(content.body.hashtags) ? content.body.hashtags.map(String) : [], parts.cta);
   const altText = typeof content.body.alt_text === "string" ? content.body.alt_text : (article?.title ?? "");
   const title = content.title ?? article?.title ?? "IRON Cyber News";
 

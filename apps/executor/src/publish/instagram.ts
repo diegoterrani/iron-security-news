@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { decryptToken, encryptToken, TokenCryptoError } from "@ironnews/shared";
+import { decryptToken, encryptToken, socialPostParts, TokenCryptoError } from "@ironnews/shared";
 import type { Pool } from "../db";
 import type { Logger } from "../logger";
 import { pngToJpeg } from "../render/jpeg";
@@ -110,10 +110,9 @@ async function publishOne(deps: InstagramPublishDeps, p: ClaimedPost): Promise<"
     [p.story_id, p.lang],
   );
   if (!content) throw new PublishError("Conteúdo do Instagram não encontrado.");
-  const caption = buildCaption(
-    typeof content.body.caption === "string" ? content.body.caption : "",
-    Array.isArray(content.body.hashtags) ? content.body.hashtags.map(String) : [],
-  );
+  // Texto da IA (sem o convite antigo) + CTA padrão + hashtags.
+  const parts = socialPostParts("instagram", p.lang, content.body);
+  const caption = buildCaption(parts.text, Array.isArray(content.body.hashtags) ? content.body.hashtags.map(String) : [], parts.cta);
 
   // Slides: a versão renderizada mais recente de cada posição (igual ao que o painel mostra).
   const { rows: slides } = await pool.query<Slide>(
