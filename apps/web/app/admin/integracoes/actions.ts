@@ -9,14 +9,18 @@ import { createClient } from "@/lib/supabase/server";
 
 export type ActionState = { ok?: boolean; message?: string };
 
-const Input = z.object({ channel: z.enum(["instagram", "facebook", "linkedin", "youtube"]), lang: z.enum(["pt", "en"]) });
+const Input = z.object({
+  channel: z.enum(["instagram", "facebook", "linkedin", "youtube"]),
+  lang: z.enum(["pt", "en"]),
+  target: z.enum(["default", "member", "organization"]).default("default"),
+});
 
 /** Desconecta a conta (apaga o token). Papel admin + MFA são checados no banco pela RPC. */
 export async function disconnectIntegration(_prev: ActionState, form: FormData): Promise<ActionState> {
-  const parsed = Input.safeParse({ channel: form.get("channel"), lang: form.get("lang") });
+  const parsed = Input.safeParse({ channel: form.get("channel"), lang: form.get("lang"), target: form.get("target") ?? undefined });
   if (!parsed.success) return { ok: false, message: "Integração inválida." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("integration_disconnect", { p_channel: parsed.data.channel, p_lang: parsed.data.lang });
+  const { error } = await supabase.rpc("integration_disconnect", { p_channel: parsed.data.channel, p_lang: parsed.data.lang, p_target: parsed.data.target });
   if (error) return { ok: false, message: rpcErrorMessage(error.message) };
   revalidatePath("/admin/integracoes");
   return { ok: true, message: "Conta desconectada. O token foi apagado." };

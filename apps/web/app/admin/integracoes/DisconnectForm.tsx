@@ -3,12 +3,13 @@ import { useActionState } from "react";
 import { Unplug } from "lucide-react";
 import { disconnectIntegration, type ActionState } from "./actions";
 
-export function DisconnectForm({ channel, lang, account }: { channel: string; lang: string; account: string }) {
+export function DisconnectForm({ channel, lang, account, target = "default" }: { channel: string; lang: string; account: string; target?: string }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(disconnectIntegration, {});
   return (
-    <form action={action} onSubmit={(e) => { if (!confirm(`Desconectar @${account}? Nada mais será publicado nesta conta até conectar de novo.`)) e.preventDefault(); }}>
+    <form action={action} onSubmit={(e) => { if (!confirm(`Desconectar ${channel === "instagram" ? "@" : ""}${account}? Nada mais será publicado nesta conta até conectar de novo.`)) e.preventDefault(); }}>
       <input type="hidden" name="channel" value={channel} />
       <input type="hidden" name="lang" value={lang} />
+      <input type="hidden" name="target" value={target} />
       <button type="submit" className="button button--danger" disabled={pending}>
         <Unplug className="icon" size={16} aria-hidden="true" /> {pending ? "Desconectando…" : "Desconectar"}
       </button>

@@ -182,7 +182,7 @@ async function handleFailure(deps: InstagramPublishDeps, p: ClaimedPost, err: un
 }
 
 /** Mesma regra do blog (RN-PUB05): PUBLISHED quando nada está pendente; PARTIAL se algo falhou. */
-async function refreshStoryStatus(pool: Pool, storyId: string) {
+export async function refreshStoryStatus(pool: Pool, storyId: string) {
   await pool.query(
     `update stories s set status = case
         when exists (select 1 from channel_posts where story_id = s.id and status in ('pending', 'publishing')) then 'PUBLISHING'::story_status

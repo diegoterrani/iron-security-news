@@ -13,6 +13,7 @@ import { Queue } from "./queue";
 import { consumeStoryBuild } from "./story/worker";
 import { publishDueBlogPosts, revalidate } from "./publish/blog";
 import { publishDueInstagramPosts, refreshInstagramTokens } from "./publish/instagram";
+import { publishDueLinkedinPosts, refreshLinkedinTokens } from "./publish/linkedin";
 import { consumeRender } from "./render/worker";
 
 /**
@@ -192,12 +193,37 @@ async function publishInstagram() {
   }
 }
 
+/** LinkedIn (§8.5): perfil e/ou página, conforme o que o painel pediu. Precisa do Storage (card) e da chave dos tokens. */
+async function publishLinkedin() {
+  if (!storage || !config.TOKEN_ENC_KEY || !state.dbOk) return;
+  try {
+    await publishDueLinkedinPosts({
+      pool, log, storage, tokenKey: config.TOKEN_ENC_KEY, dryRun: config.PUBLISH_DRY_RUN,
+      api: { apiVersion: config.LINKEDIN_API_VERSION },
+    });
+  } catch (err) {
+    log.error({ module: "publish", channel: "linkedin", err: (err as Error).message }, "linkedin publish failed");
+  }
+}
+
 async function refreshTokens() {
   if (!config.TOKEN_ENC_KEY || !state.dbOk) return;
   try {
     await refreshInstagramTokens({ pool, log, tokenKey: config.TOKEN_ENC_KEY });
   } catch (err) {
     log.error({ module: "integrations", err: (err as Error).message }, "token refresh failed");
+  }
+  try {
+    const client = (id?: string, secret?: string) => (id && secret ? { id, secret } : undefined);
+    await refreshLinkedinTokens({
+      pool, log, tokenKey: config.TOKEN_ENC_KEY,
+      clients: {
+        member: client(config.LINKEDIN_CLIENT_ID, config.LINKEDIN_CLIENT_SECRET),
+        organization: client(config.LINKEDIN_ORG_CLIENT_ID, config.LINKEDIN_ORG_CLIENT_SECRET),
+      },
+    });
+  } catch (err) {
+    log.error({ module: "integrations", channel: "linkedin", err: (err as Error).message }, "token refresh failed");
   }
 }
 
@@ -222,6 +248,7 @@ const jobs = [
   new Cron("10 * * * * *", { protect: true, timezone: "UTC" }, publishBlog),
   new Cron("5,25,45 * * * * *", { protect: true, timezone: "UTC" }, renderWorker),
   new Cron("40 * * * * *", { protect: true, timezone: "UTC" }, publishInstagram),
+  new Cron("55 * * * * *", { protect: true, timezone: "UTC" }, publishLinkedin),
   new Cron("23 7 * * *", { protect: true, timezone: "UTC" }, refreshTokens),
 ];
 const heartbeatTimer = setInterval(() => void heartbeat(), config.HEARTBEAT_INTERVAL_SEC * 1000);
@@ -234,6 +261,7 @@ log.info(
     ingest: config.INGEST_ENABLED, embeddings: embed !== null,
     triage: aiEnabled, selection: aiEnabled && config.SELECTION_ENABLED, model: config.LLM_MODEL_DEFAULT, render: storage !== null,
     instagram: Boolean(storage && config.TOKEN_ENC_KEY),
+    linkedin: Boolean(storage && config.TOKEN_ENC_KEY), linkedinApiVersion: config.LINKEDIN_API_VERSION,
     backgrounds: Boolean(config.CF_ACCOUNT_ID && config.CF_AI_TOKEN && config.BACKGROUNDS_ENABLED),
   },
   "executor started",
