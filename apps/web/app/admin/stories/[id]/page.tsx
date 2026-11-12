@@ -5,10 +5,11 @@ import Markdown from "react-markdown";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Download, ExternalLink } from "lucide-react";
 import { socialPostParts, socialPostText, type SocialChannel } from "@ironnews/shared";
 import { SeverityBadge } from "@/components/SeverityBadge";
-import { canEdit, getAssets, getInstagramPublish, getStory, getViewer, type AssetRow, type ContentRow, type InstagramPublishState } from "@/lib/admin/data";
+import { canEdit, getAssets, getInstagramPublish, getLinkedinPublish, getStory, getViewer, type AssetRow, type ContentRow, type InstagramPublishState, type LinkedinPublishState } from "@/lib/admin/data";
 import { CATEGORY_LABEL, CHANNEL_LABEL, SEVERITY_LABEL, STATUS_LABEL, fmtDateTime } from "@/lib/admin/labels";
 import { CopyButton } from "./CopyButton";
 import { PublishInstagramButton } from "./PublishInstagram";
+import { PublishLinkedinButton } from "./PublishLinkedin";
 import { EditForm, ReviewActions } from "./ReviewForms";
 
 export const metadata: Metadata = { title: "Story" };
@@ -64,22 +65,26 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
 
   // Criativos: aparecem na aba da própria rede (e a capa nas abas de artigo); "Criativos" reúne tudo.
   const needsAssets = tab !== "fontes" && tab !== "fatos";
-  const [assets, igPublish] = needsAssets
-    ? await Promise.all([getAssets(story.id), tab === "criativos" || tab === "instagram" ? getInstagramPublish(story.id) : null])
-    : [[] as AssetRow[], null];
-  const publish: PublishProps | null = igPublish
-    ? { storyId: story.id, isAdmin: viewer?.role === "admin", approved: APPROVED_STATUSES.includes(story.status), ...igPublish }
-    : null;
+  const [assets, igPublish, liState] = needsAssets
+    ? await Promise.all([
+      getAssets(story.id),
+      tab === "criativos" || tab === "instagram" ? getInstagramPublish(story.id) : null,
+      tab === "criativos" || tab === "linkedin" ? getLinkedinPublish(story.id) : null,
+    ])
+    : [[] as AssetRow[], null, null];
+  const gate = { storyId: story.id, isAdmin: viewer?.role === "admin", approved: APPROVED_STATUSES.includes(story.status) };
+  const publish: PublishProps | null = igPublish ? { ...gate, ...igPublish } : null;
+  const liPublish: LinkedinProps | null = liState ? { ...gate, state: liState } : null;
 
   let body: React.ReactNode = null;
   if (tab === "criativos") {
-    body = <Creatives assets={assets} find={find} publish={publish!} />;
+    body = <Creatives assets={assets} find={find} publish={publish!} liPublish={liPublish} />;
   } else if (tab === "pt" || tab === "en") {
     const a = find("blog", tab);
     body = !a ? <p className="section-hint">Sem artigo neste idioma.</p> : (
       <>
         <Meta c={a} />
-        <ChannelCreatives channel="blog" lang={tab} assets={assets} c={a} publish={null} />
+        <ChannelCreatives channel="blog" lang={tab} assets={assets} c={a} publish={null} liPublish={null} />
         <h2 className="article-title">{a.title}</h2>
         <p className="article-tldr"><strong>TL;DR:</strong> {str(a.body.tldr)}</p>
         <p className="section-hint">Meta description: {str(a.body.meta_description)}</p>
@@ -147,7 +152,7 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
         <div key={lang} className="channel-block">
           <h3 className="section-title">{CHANNEL_LABEL[tab]} · {lang.toUpperCase()}</h3>
           <Meta c={c} />
-          <ChannelCreatives channel={tab} lang={lang} assets={assets} c={c} publish={publish} />
+          <ChannelCreatives channel={tab} lang={lang} assets={assets} c={c} publish={publish} liPublish={liPublish} />
           {preview}
           {editable && <EditForm storyId={story.id} channel={c.channel} lang={lang} kind={c.kind} fields={[field]} />}
         </div>
@@ -229,6 +234,43 @@ function InstagramPublish({ p }: { p: PublishProps }) {
   );
 }
 
+type LinkedinProps = { storyId: string; isAdmin: boolean; approved: boolean; state: LinkedinPublishState };
+
+/** Publicação direta do post PT no LinkedIn: um bloco para o perfil e outro para a página. */
+function LinkedinPublish({ p }: { p: LinkedinProps }) {
+  return (
+    <div className="stack">
+      {(["member", "organization"] as const).map((target) => {
+        const where = target === "member" ? "no perfil" : "na página";
+        const { account, post } = p.state[target];
+        if (post?.status === "published") {
+          return (
+            <p key={target} className="alert alert--ok" role="status">
+              <CheckCircle2 className="icon" size={14} aria-hidden="true" /> Publicado no LinkedIn {where}{post.published_at ? ` em ${fmtDateTime(post.published_at)}` : ""}.
+              {post.external_url && <> <a href={post.external_url} target="_blank" rel="noopener noreferrer">Ver o post</a></>}
+            </p>
+          );
+        }
+        if (post && (post.status === "pending" || post.status === "publishing")) {
+          return <p key={target} className="section-hint" role="status">Publicando no LinkedIn {where}… o executor processa em até 1 minuto. Recarregue para ver o resultado.</p>;
+        }
+        let action: React.ReactNode;
+        if (!p.isAdmin) action = <p className="section-hint">Só administradores publicam no LinkedIn.</p>;
+        else if (!p.approved) action = <p className="section-hint">Aprove a story para liberar a publicação no LinkedIn {where}.</p>;
+        else if (!account) action = <p className="section-hint">LinkedIn {where}: nada conectado. <Link href="/admin/integracoes">Conectar em Integrações</Link>.</p>;
+        else action = <PublishLinkedinButton storyId={p.storyId} target={target} account={account} retry={Boolean(post)} />;
+        return (
+          <div key={target} className="stack">
+            {post?.status === "failed" && <p className="alert alert--warn" role="alert"><AlertTriangle className="icon" size={14} aria-hidden="true" /> LinkedIn {where} falhou: {post.last_error}</p>}
+            {post?.status === "skipped" && <p className="section-hint">{post.last_error}</p>}
+            {action}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const fileName = (a: AssetRow) => `iron-${a.channel}-${a.lang}-${a.kind}-${a.position}.png`;
 
 function Thumb({ a, width }: { a: AssetRow; width: number }) {
@@ -262,8 +304,8 @@ function PostPreview({ channel, lang, body }: { channel: SocialChannel; lang: "p
 const PENDING = "Criativo ainda não gerado: sai em até 1 minuto depois que a story fica pronta ou um texto é editado.";
 
 /** Criativo(s) da rede na própria aba: imagens para baixar, texto pronto para copiar e, no Instagram PT, a publicação. */
-function ChannelCreatives({ channel, lang, assets, c, publish }: {
-  channel: string; lang: "pt" | "en"; assets: AssetRow[]; c: ContentRow; publish: PublishProps | null;
+function ChannelCreatives({ channel, lang, assets, c, publish, liPublish }: {
+  channel: string; lang: "pt" | "en"; assets: AssetRow[]; c: ContentRow; publish: PublishProps | null; liPublish: LinkedinProps | null;
 }) {
   const of = (ch: string, kind: string) => assets.filter((a) => a.lang === lang && a.channel === ch && a.kind === kind);
   const text = (field: string) => (typeof c.body[field] === "string" ? (c.body[field] as string) : "");
@@ -302,12 +344,15 @@ function ChannelCreatives({ channel, lang, assets, c, publish }: {
         </div>
       )}
       {channel === "instagram" && lang === "pt" && publish && <InstagramPublish p={publish} />}
+      {channel === "linkedin" && lang === "pt" && liPublish && <LinkedinPublish p={liPublish} />}
     </div>
   );
 }
 
 /** Pacote para download (§4.10 modo manual): imagens + legendas prontas, por rede e idioma. */
-function Creatives({ assets, find, publish }: { assets: AssetRow[]; find: (channel: string, lang: string) => ContentRow | undefined; publish: PublishProps }) {
+function Creatives({ assets, find, publish, liPublish }: {
+  assets: AssetRow[]; find: (channel: string, lang: string) => ContentRow | undefined; publish: PublishProps; liPublish: LinkedinProps | null;
+}) {
   if (assets.length === 0) {
     return <p className="section-hint">Os criativos ainda não foram gerados. Eles saem em até 1 minuto depois que a story fica pronta ou um texto é editado.</p>;
   }
@@ -337,6 +382,7 @@ function Creatives({ assets, find, publish }: { assets: AssetRow[]; find: (chann
                 <h3 className="section-title">LinkedIn · card</h3>
                 <Thumb a={a} width={420} />
                 {liText && <><p className="pre-wrap creative-text">{liText}</p><CopyButton text={liText} label="Copiar texto" /></>}
+                {lang === "pt" && liPublish && <LinkedinPublish p={liPublish} />}
               </div>
             ))}
             {fbText && ig[0] && (

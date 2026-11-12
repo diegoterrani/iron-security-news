@@ -41,6 +41,13 @@ const EnvSchema = z.object({
   /** Chave AES-256-GCM dos tokens OAuth (MESMO valor da Vercel). Sem ela, a publicação no Instagram fica desligada. */
   TOKEN_ENC_KEY: z.string().min(40).optional(),
   INSTAGRAM_GRAPH_VERSION: z.string().regex(/^v\d+\.\d+$/).default("v23.0"),
+  /** LinkedIn-Version (YYYYMM, §8.5). Cada versão vale ~1 ano: atualizar aqui sem mexer no código. Vazio = padrão. */
+  LINKEDIN_API_VERSION: z.preprocess((v) => (v === "" ? undefined : v), z.string().regex(/^\d{6}$/).default("202606")),
+  /** Só para renovar o token da página (refresh token). Mesmos valores da Vercel; opcionais. */
+  LINKEDIN_CLIENT_ID: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  LINKEDIN_CLIENT_SECRET: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  LINKEDIN_ORG_CLIENT_ID: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
+  LINKEDIN_ORG_CLIENT_SECRET: z.preprocess((v) => (v === "" ? undefined : v), z.string().optional()),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
   PUBLISH_DRY_RUN: z

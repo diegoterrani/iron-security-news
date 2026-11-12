@@ -1,6 +1,7 @@
 // Só servidor: lê segredos de process.env (nunca importar em componente "use client").
 import { siteUrl } from "@/lib/supabase/env";
 import { instagramConfig, type InstagramConfig } from "./instagram";
+import { linkedinConfig, linkedinEnvProblems, type LinkedinConfig, type LinkedinTarget } from "./linkedin";
 
 /** Tudo que a conexão do Instagram precisa no servidor. `null` = falta configurar (a tela avisa). */
 export interface InstagramServerEnv {
@@ -16,3 +17,29 @@ export function instagramServerEnv(): InstagramServerEnv | null {
   if (!ig || !tokenKey || !stateSecret || stateSecret.length < 32) return null;
   return { ig, tokenKey, stateSecret };
 }
+
+/** Para colar o token manualmente basta a chave de cifra (o app ID/secret só servem ao OAuth). */
+export function tokenOnlyEnv(): { tokenKey: string; graphVersion: string } | null {
+  const tokenKey = process.env.TOKEN_ENC_KEY;
+  if (!tokenKey) return null;
+  const v = process.env.INSTAGRAM_GRAPH_VERSION ?? "";
+  return { tokenKey, graphVersion: /^v\d+\.\d+$/.test(v) ? v : "v23.0" };
+}
+
+/** Tudo que a conexão do LinkedIn (perfil ou página) precisa no servidor. `null` = falta configurar. */
+export interface LinkedinServerEnv {
+  li: LinkedinConfig;
+  tokenKey: string;
+  stateSecret: string;
+}
+
+export function linkedinServerEnv(target: LinkedinTarget): LinkedinServerEnv | null {
+  const li = linkedinConfig(target, process.env, siteUrl());
+  const tokenKey = process.env.TOKEN_ENC_KEY;
+  const stateSecret = process.env.OAUTH_STATE_SECRET?.trim();
+  if (!li || !tokenKey || !stateSecret || stateSecret.length < 32) return null;
+  return { li, tokenKey, stateSecret };
+}
+
+/** Nomes das variáveis que faltam (ou estão inválidas) para o alvo. Nunca devolve valores. */
+export const linkedinMissingEnv = (target: LinkedinTarget): string[] => linkedinEnvProblems(target, process.env);

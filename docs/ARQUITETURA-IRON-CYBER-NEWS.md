@@ -1076,6 +1076,10 @@ O JWT do Supabase traz `sub`, `email`, `aal`, `amr`. O papel **não** vai no JWT
   Header de resposta `x-restli-id` = URN do post.
 - **Tokens:** access 60 dias; refresh token 365 dias → job de renovação.
 - **Env:** `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_API_VERSION`.
+- **Implementado (12/11/2026, migration 20261112000003):** dois alvos, cada um com app, callback e linha próprios em `integrations` (coluna `target`: `member` = perfil, `organization` = página; `default` nos demais canais). A unicidade de `integrations` e `channel_posts` passou a incluir `target`.
+  - Perfil: app com *Sign In with LinkedIn using OpenID Connect* + *Share on LinkedIn*; escopos `openid profile w_member_social`; autor `urn:li:person:<sub>` (do `/v2/userinfo`); token de 60 dias sem refresh (o painel avisa 7 dias antes para reconectar). Callback `/admin/integracoes/linkedin/perfil/callback`.
+  - Página: app separado só com *Community Management API*; escopos `rw_organization_admin w_organization_social`; a página vem de `organizationAcls` (papel ADMINISTRATOR); com várias páginas, `LINKEDIN_ORG_ID`. Refresh token cifrado e renovado pelo executor (`LINKEDIN_ORG_CLIENT_ID/SECRET` no executor). Callback `/admin/integracoes/linkedin/pagina/callback`.
+  - Painel: botões "Publicar no perfil" / "Publicar na página" nas abas LinkedIn e Criativos (RPC `review_publish_linkedin`). Executor: `apps/executor/src/publish/linkedin.ts` (texto em *little text* com escape dos reservados e hashtags no template `{hashtag|\#|Tag}`, card PNG 1200×627).
 
 ### 8.6 YouTube Data API v3 (Shorts)
 - **Pré-requisitos:** projeto Google Cloud, OAuth consent screen (externo), escopo `https://www.googleapis.com/auth/youtube.upload`. **Projetos não auditados publicam vídeos como privados** → solicitar o *YouTube API Services audit* cedo. Quota padrão 10.000 unidades/dia; upload = 1.600 → até 6 uploads/dia.

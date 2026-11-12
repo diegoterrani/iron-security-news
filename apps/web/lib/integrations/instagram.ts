@@ -39,7 +39,7 @@ export function authorizeUrl(cfg: InstagramConfig, state: string): string {
 
 /** Erro sem segredo: `code` é estável (vira mensagem na tela); `status` ajuda no log. */
 export class InstagramError extends Error {
-  constructor(public readonly code: "exchange" | "long_lived" | "profile" | "not_professional" | "scopes" | "network", public readonly status?: number) {
+  constructor(public readonly code: "exchange" | "long_lived" | "profile" | "not_professional" | "scopes" | "network" | "token_format" | "token_invalid" | "ig_id", public readonly status?: number) {
     super(`instagram: ${code}${status ? ` (${status})` : ""}`);
     this.name = "InstagramError";
   }
@@ -128,6 +128,55 @@ export async function connectWithCode(cfg: InstagramConfig, code: string, fetchI
   };
 }
 
+/** Token de usuário do Instagram (login do Instagram): usa graph.instagram.com e vale 60 dias. */
+export const IG_TOKEN_RE = /^IG[A-Za-z0-9_-]{30,1000}$/;
+/** Token do Facebook (Unified login, "System-user access token"): usa graph.facebook.com e não expira. */
+export const FB_TOKEN_RE = /^EAA[A-Za-z0-9_-]{30,1000}$/;
+
+export type ApiHost = "instagram" | "facebook";
+export type PastedAccount = Omit<ConnectedAccount, "expiresAt"> & { expiresAt: Date | null; host: ApiHost };
+
+/**
+ * Token colado pelo admin (gerado em "Generate access tokens" no painel da Meta). Confere na própria
+ * API de quem é a conta antes de aceitar.
+ * - IGAA…: `GET graph.instagram.com/me` devolve a conta e o tipo (recusa conta pessoal); validade de 59 dias.
+ * - EAA… (usuário do sistema): precisa do id da conta do Instagram (aparece abaixo do @ no painel);
+ *   `GET graph.facebook.com/{id}?fields=username` prova que o token enxerga essa conta. Sem validade.
+ */
+export async function accountFromToken(
+  graphVersion: string, token: string, igUserId: string | null = null, fetchImpl: FetchLike = fetch, now = new Date(),
+): Promise<PastedAccount> {
+  const auth = { method: "GET", headers: { Authorization: `Bearer ${token}` } };
+  if (IG_TOKEN_RE.test(token)) {
+    const meUrl = new URL(`https://graph.instagram.com/${graphVersion}/me`);
+    meUrl.searchParams.set("fields", "user_id,username,account_type");
+    const me = await getJson(fetchImpl, meUrl.toString(), auth, "token_invalid");
+    const accountId = String(me.user_id ?? "");
+    const username = typeof me.username === "string" ? me.username : "";
+    const accountType = typeof me.account_type === "string" ? me.account_type : "";
+    if (!/^\d+$/.test(accountId) || !username) throw new InstagramError("profile");
+    if (accountType && !["BUSINESS", "MEDIA_CREATOR"].includes(accountType)) throw new InstagramError("not_professional");
+    return {
+      accountId, username, accountType, accessToken: token, host: "instagram",
+      expiresAt: new Date(now.getTime() + 59 * 86_400_000), // 60 dias da Meta, com 1 dia de folga
+      scopes: [...INSTAGRAM_SCOPES],
+    };
+  }
+  if (FB_TOKEN_RE.test(token)) {
+    if (!igUserId || !/^\d{5,30}$/.test(igUserId)) throw new InstagramError("ig_id");
+    const url = new URL(`https://graph.facebook.com/${graphVersion}/${igUserId}`);
+    url.searchParams.set("fields", "id,username");
+    const acc = await getJson(fetchImpl, url.toString(), auth, "token_invalid");
+    const username = typeof acc.username === "string" ? acc.username : "";
+    if (String(acc.id ?? "") !== igUserId || !username) throw new InstagramError("profile");
+    return {
+      accountId: igUserId, username, accountType: "BUSINESS", accessToken: token, host: "facebook",
+      expiresAt: null, scopes: ["instagram_basic", "instagram_content_publish"],
+    };
+  }
+  throw new InstagramError("token_format");
+}
+
 /** Mensagem para a tela a partir do código do erro (sem detalhes internos). */
 export const CONNECT_ERROR_MESSAGE: Record<string, string> = {
   denied: "A conexão foi cancelada no Instagram.",
@@ -141,4 +190,7 @@ export const CONNECT_ERROR_MESSAGE: Record<string, string> = {
   scopes: "Faltou autorizar a permissão de publicar. Conecte de novo e aceite todas as permissões.",
   network: "O Instagram não respondeu a tempo. Tente de novo.",
   save: "Não foi possível salvar a integração. Tente de novo.",
+  token_format: "Isso não parece um token da Meta (ele começa com IGAA ou EAA). Gere de novo em \"Generate access tokens\".",
+  ig_id: "Para token que começa com EAA, informe também o ID da conta do Instagram (o número abaixo do @ no painel da Meta).",
+  token_invalid: "O Instagram recusou o token. Gere um novo no painel da Meta e cole de novo.",
 };

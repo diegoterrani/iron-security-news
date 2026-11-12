@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { INSTAGRAM_SCOPES, InstagramError, authorizeUrl, connectWithCode, instagramConfig } from "../lib/integrations/instagram";
+import { INSTAGRAM_SCOPES, InstagramError, accountFromToken, authorizeUrl, connectWithCode, instagramConfig } from "../lib/integrations/instagram";
 import { createState, verifyState } from "../lib/integrations/oauth-state";
 
 const SECRET = "s".repeat(40);
@@ -89,5 +89,47 @@ describe("connectWithCode", () => {
   it("falha de rede vira 'network'", async () => {
     const f = vi.fn(async () => { throw new TypeError("fetch failed"); }) as unknown as typeof fetch;
     await expect(connectWithCode(cfg, "c", f)).rejects.toMatchObject({ code: "network" });
+  });
+});
+
+describe("accountFromToken (token colado do painel da Meta)", () => {
+  const IG = `IGAA${"x".repeat(60)}`;
+  const FB = `EAA${"y".repeat(60)}`;
+  const ID = "17841467008904236";
+  const callOf = (f: typeof fetch) => (f as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]!;
+
+  it("IGAA: confere a conta em graph.instagram.com e marca validade de 59 dias", async () => {
+    const f = fakeFetch({ "graph.instagram.com/v23.0/me": OK["graph.instagram.com/v23.0/me"] });
+    const acc = await accountFromToken("v23.0", IG, null, f, new Date("2026-11-12T00:00:00Z"));
+    expect(acc).toMatchObject({ accountId: "17841400000000000", username: "ironsecurity", accessToken: IG, host: "instagram" });
+    expect(acc.expiresAt?.toISOString()).toBe("2027-01-10T00:00:00.000Z");
+    expect(callOf(f)[0]).not.toContain(IG); // token só no header
+    expect(new Headers(callOf(f)[1].headers).get("authorization")).toBe(`Bearer ${IG}`);
+  });
+  it("EAA (usuário do sistema): exige o id da conta, confere em graph.facebook.com e fica sem validade", async () => {
+    const f = fakeFetch({ [`graph.facebook.com/v23.0/${ID}`]: { id: ID, username: "diegoterrani1" } });
+    const acc = await accountFromToken("v23.0", FB, ID, f);
+    expect(acc).toMatchObject({ accountId: ID, username: "diegoterrani1", host: "facebook", expiresAt: null });
+    expect(callOf(f)[0]).not.toContain(FB);
+    await expect(accountFromToken("v23.0", FB, null, f)).rejects.toMatchObject({ code: "ig_id" });
+    await expect(accountFromToken("v23.0", FB, "abc", f)).rejects.toMatchObject({ code: "ig_id" });
+  });
+  it("EAA que não enxerga a conta informada é recusado", async () => {
+    const other = fakeFetch({ "graph.facebook.com": { id: "999", username: "outra" } });
+    await expect(accountFromToken("v23.0", FB, ID, other)).rejects.toMatchObject({ code: "profile" });
+    const denied = fakeFetch({ "graph.facebook.com": new Response("{}", { status: 400 }) });
+    await expect(accountFromToken("v23.0", FB, ID, denied)).rejects.toMatchObject({ code: "token_invalid" });
+  });
+  it("recusa formato desconhecido sem chamar a API", async () => {
+    const f = fakeFetch({});
+    await expect(accountFromToken("v23.0", "IGAA curto", null, f)).rejects.toMatchObject({ code: "token_format" });
+    await expect(accountFromToken("v23.0", `XYZ${"x".repeat(60)}`, ID, f)).rejects.toMatchObject({ code: "token_format" });
+    expect(f).not.toHaveBeenCalled();
+  });
+  it("IGAA recusado vira token_invalid; conta pessoal é recusada", async () => {
+    const bad = fakeFetch({ "graph.instagram.com": new Response("{}", { status: 400 }) });
+    await expect(accountFromToken("v23.0", IG, null, bad)).rejects.toMatchObject({ code: "token_invalid" });
+    const personal = fakeFetch({ "graph.instagram.com": { user_id: "1", username: "x", account_type: "PERSONAL" } });
+    await expect(accountFromToken("v23.0", IG, null, personal)).rejects.toBeInstanceOf(InstagramError);
   });
 });
