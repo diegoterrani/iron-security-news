@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { INSTAGRAM_SCOPES, InstagramError, authorizeUrl, connectWithCode, instagramConfig } from "../lib/integrations/instagram";
+import { INSTAGRAM_SCOPES, InstagramError, accountFromToken, authorizeUrl, connectWithCode, instagramConfig } from "../lib/integrations/instagram";
 import { createState, verifyState } from "../lib/integrations/oauth-state";
 
 const SECRET = "s".repeat(40);
@@ -89,5 +89,30 @@ describe("connectWithCode", () => {
   it("falha de rede vira 'network'", async () => {
     const f = vi.fn(async () => { throw new TypeError("fetch failed"); }) as unknown as typeof fetch;
     await expect(connectWithCode(cfg, "c", f)).rejects.toMatchObject({ code: "network" });
+  });
+});
+
+describe("accountFromToken (token colado do painel da Meta)", () => {
+  const TOKEN = `IGAA${"x".repeat(60)}`;
+  it("confere a conta no Instagram e marca validade de 59 dias", async () => {
+    const f = fakeFetch({ "graph.instagram.com/v23.0/me": OK["graph.instagram.com/v23.0/me"] });
+    const acc = await accountFromToken("v23.0", TOKEN, f, new Date("2026-11-12T00:00:00Z"));
+    expect(acc).toMatchObject({ accountId: "17841400000000000", username: "ironsecurity", accessToken: TOKEN });
+    expect(acc.expiresAt.toISOString()).toBe("2027-01-10T00:00:00.000Z");
+    const call = (f as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]!;
+    expect(call[0]).not.toContain(TOKEN); // token só no header
+    expect(new Headers(call[1].headers).get("authorization")).toBe(`Bearer ${TOKEN}`);
+  });
+  it("recusa token do Facebook (EAA…) ou lixo sem chamar a API", async () => {
+    const f = fakeFetch({});
+    await expect(accountFromToken("v23.0", `EAA${"x".repeat(60)}`, f)).rejects.toMatchObject({ code: "token_format" });
+    await expect(accountFromToken("v23.0", "IGAA curto", f)).rejects.toMatchObject({ code: "token_format" });
+    expect(f).not.toHaveBeenCalled();
+  });
+  it("token recusado pelo Instagram vira token_invalid; conta pessoal é recusada", async () => {
+    const bad = fakeFetch({ "graph.instagram.com": new Response("{}", { status: 400 }) });
+    await expect(accountFromToken("v23.0", TOKEN, bad)).rejects.toMatchObject({ code: "token_invalid" });
+    const personal = fakeFetch({ "graph.instagram.com": { user_id: "1", username: "x", account_type: "PERSONAL" } });
+    await expect(accountFromToken("v23.0", TOKEN, personal)).rejects.toBeInstanceOf(InstagramError);
   });
 });

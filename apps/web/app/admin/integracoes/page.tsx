@@ -3,9 +3,10 @@ import { AlertTriangle, CheckCircle2, Instagram, Plug } from "lucide-react";
 import { getViewer, rpcErrorMessage } from "@/lib/admin/data";
 import { fmtDateTime } from "@/lib/admin/labels";
 import { CONNECT_ERROR_MESSAGE, INSTAGRAM_SCOPES } from "@/lib/integrations/instagram";
-import { instagramServerEnv } from "@/lib/integrations/server";
+import { instagramServerEnv, tokenOnlyEnv } from "@/lib/integrations/server";
 import { createClient } from "@/lib/supabase/server";
 import { DisconnectForm } from "./DisconnectForm";
+import { TokenForm } from "./TokenForm";
 
 export const metadata: Metadata = { title: "Integrações" };
 export const dynamic = "force-dynamic";
@@ -30,7 +31,8 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   const rows = (list.data ?? []) as IntegrationRow[];
   const ig = rows.find((r) => r.channel === "instagram" && r.lang === "pt");
   const isAdmin = viewer?.role === "admin";
-  const configured = instagramServerEnv() !== null;
+  const configured = instagramServerEnv() !== null; // OAuth (login do Instagram)
+  const canPasteToken = tokenOnlyEnv() !== null; // token colado (Unified login)
   const now = Date.now();
   const expiresInDays = ig?.expires_at ? Math.floor((new Date(ig.expires_at).getTime() - now) / DAY_MS) : null;
   const connected = ig?.status === "active" && expiresInDays !== null && expiresInDays >= 0;
@@ -71,7 +73,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
           )}
           <p className="section-hint">Permissões pedidas: <span className="mono">{INSTAGRAM_SCOPES.join(", ")}</span> (ler o perfil e publicar).</p>
 
-          {!configured && (
+          {!configured && !canPasteToken && (
             <p className="alert alert--warn">
               <AlertTriangle className="icon" size={14} aria-hidden="true" /> {CONNECT_ERROR_MESSAGE.config}
             </p>
@@ -86,9 +88,9 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
               )}
               {ig && ig.status !== "disabled" && <DisconnectForm channel="instagram" lang="pt" account={ig.account_name} />}
             </div>
-          ) : (
-            <p className="section-hint">Só administradores podem conectar ou desconectar contas.</p>
-          )}
+          ) : null}
+          {isAdmin && canPasteToken && <TokenForm reconnect={Boolean(ig && ig.status !== "disabled")} />}
+          {!isAdmin && <p className="section-hint">Só administradores podem conectar ou desconectar contas.</p>}
         </section>
       </main>
     </>
