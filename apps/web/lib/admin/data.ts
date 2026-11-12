@@ -134,3 +134,23 @@ export async function getAssets(storyId: string): Promise<AssetRow[]> {
   }
   return [...latest.values()].sort((x, y) => x.position - y.position);
 }
+
+export interface InstagramPublishState {
+  /** Conta conectada e válida (via RPC: o painel nunca lê a tabela integrations). */
+  account: string | null;
+  post: { status: "pending" | "publishing" | "published" | "failed" | "skipped"; last_error: string | null; external_url: string | null; published_at: string | null } | null;
+}
+
+/** Estado da publicação do carrossel PT no Instagram para a aba Criativos. */
+export async function getInstagramPublish(storyId: string): Promise<InstagramPublishState> {
+  const supabase = await createClient();
+  const [integrations, posts] = await Promise.all([
+    supabase.rpc("integrations_list"),
+    supabase.from("channel_posts").select("status, last_error, external_url, published_at")
+      .eq("story_id", storyId).eq("channel", "instagram").eq("lang", "pt").maybeSingle(),
+  ]);
+  const ig = ((integrations.data ?? []) as { channel: string; lang: string; account_name: string; status: string; expires_at: string | null }[])
+    .find((r) => r.channel === "instagram" && r.lang === "pt");
+  const valid = ig && ig.status === "active" && (!ig.expires_at || new Date(ig.expires_at).getTime() > Date.now());
+  return { account: valid ? ig.account_name : null, post: (posts.data as InstagramPublishState["post"]) ?? null };
+}

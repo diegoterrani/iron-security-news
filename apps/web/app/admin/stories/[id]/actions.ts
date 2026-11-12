@@ -60,3 +60,11 @@ export async function editContent(_prev: ActionState, form: FormData): Promise<A
   const r = await call("review_edit", { p_story: id.data, p_channel: channel, p_lang: lang, p_kind: kind, p_title: title, p_patch: patch }, id.data);
   return r.ok ? { ok: true, message: "Alteração salva como nova versão." } : r;
 }
+
+/** Pede a publicação do carrossel PT no Instagram. Admin + MFA + story aprovada + conta conectada: checado no banco. */
+export async function publishInstagram(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const id = Uuid.safeParse(form.get("story_id"));
+  if (!id.success) return { ok: false, message: "Story inválida." };
+  const r = await call("review_publish_instagram", { p_story: id.data, p_lang: "pt" }, id.data);
+  return r.ok ? { ok: true, message: "Publicação pedida. O executor publica em até 1 minuto; recarregue para ver o link." } : r;
+}
