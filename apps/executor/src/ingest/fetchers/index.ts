@@ -1,10 +1,11 @@
 import { httpGet } from "../http";
 import type { FetchContext, FetchResult, SourceKind, SourceRow } from "../types";
 import { ghsaUrl, nvdUrl, parseGhsa, parseKev, parseNvd } from "./official";
+import { parseRansomwareLive } from "./ransomware";
 import { parseFeed } from "./rss";
 
-/** Tipos de fonte com coletor implementado. `json_api` e `ransomware_live` ficam para depois. */
-export const SUPPORTED_KINDS: SourceKind[] = ["rss", "cisa_kev", "nvd", "github_advisory"];
+/** Tipos de fonte com coletor implementado. `json_api` fica para depois. */
+export const SUPPORTED_KINDS: SourceKind[] = ["rss", "cisa_kev", "nvd", "github_advisory", "ransomware_live"];
 
 export async function fetchSource(src: SourceRow, ctx: FetchContext, fetchImpl?: typeof fetch): Promise<FetchResult> {
   switch (src.kind) {
@@ -29,6 +30,11 @@ export async function fetchSource(src: SourceRow, ctx: FetchContext, fetchImpl?:
       if (ctx.githubToken) headers.authorization = `Bearer ${ctx.githubToken}`;
       const r = await httpGet(ghsaUrl(src.url, src.config), { headers, etag: src.etag, fetchImpl });
       return { notModified: r.status === 304, items: r.status === 304 ? [] : parseGhsa(r.body, ctx), etag: r.etag, lastModified: null };
+    }
+    case "ransomware_live": {
+      // Resumo agregado do país, sem nomes de vítimas (ver fetchers/ransomware.ts).
+      const r = await httpGet(src.url, { fetchImpl, headers: { accept: "application/json" } });
+      return { notModified: false, items: parseRansomwareLive(r.body, src.config, ctx), etag: null, lastModified: null };
     }
     default:
       throw new Error(`tipo de fonte sem coletor: ${src.kind}`);
