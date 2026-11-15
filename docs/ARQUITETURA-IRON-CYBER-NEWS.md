@@ -1014,8 +1014,9 @@ O JWT do Supabase traz `sub`, `email`, `aal`, `amr`. O papel **não** vai no JWT
   4. `max_tokens` justo por tarefa (triagem 300, artigo 4.000, derivados 3.000).
   5. Excerpts truncados a 2.000 chars e no máximo 6 fontes por story.
 - **Erros:** 429/529 → retry exponencial com jitter (1 s, 4 s, 16 s, 60 s); 400 → não retenta, grava erro; saída que não passa no Zod → 1 retry com a mensagem de erro de validação anexada.
-- **Env:** `ANTHROPIC_API_KEY`, `LLM_MODEL_DEFAULT=claude-haiku-5-5`, `LLM_MODEL_FALLBACK=claude-sonnet-5-5`, `LLM_PRICE_TABLE` (JSON com US$/MTok de input, output, cache write, cache read e desconto batch, para calcular `llm_usage.cost_usd` — atualizar a partir da página de preços da Anthropic).
-- **Guarda de custo:** além do orçamento no app, configurar limite de gasto mensal na Console da Anthropic.
+- **Provedor:** OpenRouter, no endpoint compatível com a Messages API da Anthropic (`https://openrouter.ai/api/v1/messages`, `Authorization: Bearer`), com o mesmo SDK `@anthropic-ai/sdk`. A triagem em lote usa a Batch API do OpenRouter (`/api/v1/batches`, `endpoint: "/v1/messages"`).
+- **Env:** `OPENROUTER_API_KEY`, `LLM_MODEL_DEFAULT=anthropic/claude-haiku-5.5`, `LLM_MODEL_FALLBACK=anthropic/claude-sonnet-5.5` (IDs antigos `claude-haiku-5-5` são convertidos), `LLM_PRICE_TABLE` (JSON `{"slug":{"input":US$/MTok,"output":US$/MTok}}`, usado só quando a resposta não traz o `usage.cost` do OpenRouter).
+- **Guarda de custo:** além do orçamento no app, configurar limite de crédito na chave do OpenRouter (Settings → Keys → Credit limit).
 
 ### 8.2 Cloudflare Workers AI (embeddings)
 - **Endpoint:** `POST https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/@cf/baai/bge-m3`
@@ -1371,10 +1372,10 @@ REVALIDATE_SECRET=…
 RENDER_URL=https://render.<dominio>/render
 RENDER_SECRET=…
 TOKEN_ENC_KEY=…
-ANTHROPIC_API_KEY=…
-LLM_MODEL_DEFAULT=claude-haiku-5-5
-LLM_MODEL_FALLBACK=claude-sonnet-5-5
-LLM_PRICE_TABLE='{"claude-haiku-5-5":{"in":0,"out":0,"cw":0,"cr":0},"claude-sonnet-5-5":{…},"batchDiscount":0.5}'
+OPENROUTER_API_KEY=…
+LLM_MODEL_DEFAULT=anthropic/claude-haiku-5.5
+LLM_MODEL_FALLBACK=anthropic/claude-sonnet-5.5
+LLM_PRICE_TABLE='{"anthropic/claude-haiku-5.5":{"input":0.1,"output":0.5}}'
 CF_ACCOUNT_ID=… CF_AI_TOKEN=…
 HEYGEN_API_KEY=…
 NVD_API_KEY=…

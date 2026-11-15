@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
+import { toOpenRouterModel } from "../src/llm/client";
 import { costUsd, parsePriceTable, DEFAULT_PRICES } from "../src/llm/usage";
 import { coerceTriage, parseTriageMessage, sourceBlock, triageParams } from "../src/triage/triage";
 import { localClock, pickClusters, selectionMinute } from "../src/triage/selection";
@@ -73,11 +74,16 @@ describe("custo (llm_usage)", () => {
     expect(costUsd(DEFAULT_PRICES, "claude-haiku-5-5", u, false)).toBeCloseTo(0.1 + 0.5 + 0.01, 6);
     expect(costUsd(DEFAULT_PRICES, "claude-haiku-5-5", u, true)).toBeCloseTo(0.305, 6);
   });
+  it("custo informado pelo OpenRouter tem prioridade (já inclui cache e lote)", () => {
+    const u = { input_tokens: 1_000_000, output_tokens: 1_000_000, cost: 0.0123 };
+    expect(costUsd(DEFAULT_PRICES, "anthropic/claude-haiku-5.5", u, true)).toBe(0.0123);
+    expect(costUsd(DEFAULT_PRICES, "modelo-desconhecido", u, false)).toBe(0.0123);
+  });
   it("modelo sem preço é erro explícito; tabela por env sobrescreve", () => {
     expect(() => costUsd(DEFAULT_PRICES, "x", { input_tokens: 1, output_tokens: 1 }, false)).toThrow(/sem preço/);
     const t = parsePriceTable('{"claude-haiku-5-5":{"input":0.2,"output":1}}');
-    expect(t["claude-haiku-5-5"]).toEqual({ input: 0.2, output: 1 });
-    expect(t["claude-sonnet-5-5"]).toBeDefined();
+    expect(t["anthropic/claude-haiku-5.5"]).toEqual({ input: 0.2, output: 1 });
+    expect(t["anthropic/claude-sonnet-5.5"]).toBeDefined();
     expect(() => parsePriceTable('{"m":{"input":"a"}}')).toThrow(/inválida/);
   });
 });
@@ -101,5 +107,15 @@ describe("seleção (RN-STO01/02)", () => {
     expect(pickClusters(c, 2, 55).map((x) => x.id)).toEqual(["a", "c"]);
     expect(pickClusters(c, 3, 55).map((x) => x.id)).toEqual(["a", "c", "b"]);
     expect(pickClusters(c, 2, 95)).toEqual([]);
+  });
+});
+
+describe("OpenRouter: nomes de modelo", () => {
+  it("converte IDs da Anthropic e mantém slugs do OpenRouter", () => {
+    expect(toOpenRouterModel("claude-haiku-5-5")).toBe("anthropic/claude-haiku-5.5");
+    expect(toOpenRouterModel("claude-sonnet-5-5")).toBe("anthropic/claude-sonnet-5.5");
+    expect(toOpenRouterModel("anthropic/claude-haiku-5.5")).toBe("anthropic/claude-haiku-5.5");
+    expect(toOpenRouterModel("anthropic/claude-haiku-5.5:batch")).toBe("anthropic/claude-haiku-5.5");
+    expect(toOpenRouterModel("deepseek/deepseek-v4.1-flash")).toBe("deepseek/deepseek-v4.1-flash");
   });
 });

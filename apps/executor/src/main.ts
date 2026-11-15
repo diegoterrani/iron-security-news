@@ -1,3 +1,5 @@
+import { createBatchClient } from "./llm/batches";
+import { createLlmClient } from "./llm/client";
 import { Cron } from "croner";
 import { loadConfig } from "./config";
 import { createPool, pingDb } from "./db";
@@ -5,7 +7,6 @@ import { startHealthServer, type HealthState } from "./health";
 import { createLogger } from "./logger";
 import { createEmbedder } from "./ingest/embeddings";
 import { ingestDue, purgeOldItems } from "./ingest/ingest";
-import Anthropic from "@anthropic-ai/sdk";
 import { parsePriceTable } from "./llm/usage";
 import { pollTriageBatches, submitTriageBatch, type TriageDeps } from "./triage/run";
 import { runSelectionIfDue } from "./triage/selection";
@@ -87,14 +88,15 @@ async function ingest() {
 }
 
 const prices = parsePriceTable(config.LLM_PRICE_TABLE);
-const anthropic = config.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: config.ANTHROPIC_API_KEY, maxRetries: 3 }) : null;
-const aiEnabled = anthropic !== null && config.TRIAGE_ENABLED;
+const llm = config.OPENROUTER_API_KEY ? createLlmClient(config.OPENROUTER_API_KEY) : null;
+const batches = config.OPENROUTER_API_KEY ? createBatchClient(config.OPENROUTER_API_KEY) : null;
+const aiEnabled = llm !== null && config.TRIAGE_ENABLED;
 
 async function triageDeps(): Promise<TriageDeps | null> {
   if (!aiEnabled || !state.dbOk) return null;
   brandId ??= await resolveBrandId();
   if (!brandId) return null;
-  return { pool, log, client: anthropic!, brandId, model: config.LLM_MODEL_DEFAULT, prices };
+  return { pool, log, client: llm!, batches: batches!, brandId, model: config.LLM_MODEL_DEFAULT, prices };
 }
 
 /** Triagem em lote a cada 30 min (RN-TRI01) e coleta dos lotes prontos a cada minuto. */
@@ -168,7 +170,7 @@ async function renderWorker() {
     await consumeRender({
       pool, log, storage,
       background: {
-        llm: anthropic ? { client: anthropic, model: config.LLM_MODEL_DEFAULT, prices } : null,
+        llm: llm ? { client: llm, model: config.LLM_MODEL_DEFAULT, prices } : null,
         workersAi: config.CF_ACCOUNT_ID && config.CF_AI_TOKEN && config.BACKGROUNDS_ENABLED
           ? { accountId: config.CF_ACCOUNT_ID, token: config.CF_AI_TOKEN } : null,
       },
