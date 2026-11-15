@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Pool } from "../db";
 import type { Logger } from "../logger";
+import { BATCH_TERMINAL, BatchHttpError, type BatchClient } from "../llm/batches";
 import { budgetStatus, recordUsage, type ModelPrice } from "../llm/usage";
 import { applyTriage, parseTriageMessage, triageParams, type TriageItem } from "./triage";
 
@@ -8,6 +9,7 @@ export interface TriageDeps {
   pool: Pool;
   log: Logger;
   client: Anthropic;
+  batches: BatchClient;
   brandId: string;
   model: string;
   prices: Record<string, ModelPrice>;
@@ -45,7 +47,7 @@ async function overBudget(deps: TriageDeps): Promise<boolean> {
   return false;
 }
 
-/** A cada 30 min (RN-TRI01): envia os itens novos num lote da Message Batches API (50% do custo). */
+/** A cada 30 min (RN-TRI01): envia os itens novos num lote da Batch API do OpenRouter (50% do custo). */
 export async function submitTriageBatch(deps: TriageDeps): Promise<string | null> {
   const { pool, log } = deps;
   const stale = await pool.query(
@@ -58,9 +60,7 @@ export async function submitTriageBatch(deps: TriageDeps): Promise<string | null
   const items = await pendingItems(pool, deps.brandId, { sinceHours: STALE_HOURS, limit: MAX_BATCH_ITEMS });
   if (items.length === 0 || (await overBudget(deps))) return null;
 
-  const batch = await deps.client.messages.batches.create({
-    requests: items.map((it) => ({ custom_id: it.id, params: triageParams(deps.model, it) })),
-  });
+  const batch = await deps.batches.create(deps.model, items.map((it) => ({ custom_id: it.id, params: triageParams(deps.model, it) })));
   await pool.query("insert into llm_batches (id, task, item_ids) values ($1, 'triage', $2::uuid[])", [batch.id, items.map((i) => i.id)]);
   log.info({ module: "triage", batchId: batch.id, items: items.length }, "triage batch submitted");
   return batch.id;
@@ -68,18 +68,31 @@ export async function submitTriageBatch(deps: TriageDeps): Promise<string | null
 
 /** A cada minuto: lotes terminados têm os resultados aplicados (em qualquer ordem, por custom_id). */
 export async function pollTriageBatches(deps: TriageDeps): Promise<void> {
-  const { pool, log, client } = deps;
+  const { pool, log } = deps;
   const { rows } = await pool.query<{ id: string; created_at: Date }>(
     "select id, created_at from llm_batches where status = 'in_progress' and task = 'triage' order by created_at",
   );
   for (const b of rows) {
-    const batch = await client.messages.batches.retrieve(b.id);
-    if (batch.processing_status !== "ended") {
-      if (Date.now() - b.created_at.getTime() > BATCH_TIMEOUT_HOURS * 3_600_000) {
-        await client.messages.batches.cancel(b.id).catch(() => undefined);
-        await pool.query("update llm_batches set status = 'failed', error = 'timeout', ended_at = now() where id = $1", [b.id]);
-        log.error({ module: "triage", batchId: b.id }, "triage batch timed out");
-      }
+    const fail = async (error: string) => {
+      // Os itens continuam 'new' e entram no próximo lote.
+      await pool.query("update llm_batches set status = 'failed', error = $2, ended_at = now() where id = $1", [b.id, error]);
+      log.error({ module: "triage", batchId: b.id, error }, "triage batch failed");
+    };
+    let batch;
+    try {
+      batch = await deps.batches.retrieve(b.id);
+    } catch (err) {
+      // Lote desconhecido (ex.: ID da Batch API da Anthropic, de antes da troca para o OpenRouter) ou já apagado.
+      if (err instanceof BatchHttpError && (err.status === 404 || err.status === 410)) await fail(`lote não encontrado (${err.status})`);
+      else log.warn({ module: "triage", batchId: b.id, err: (err as Error).message }, "triage batch poll failed");
+      continue;
+    }
+    if (!BATCH_TERMINAL.has(batch.status)) {
+      if (Date.now() - b.created_at.getTime() > BATCH_TIMEOUT_HOURS * 3_600_000) await fail("timeout");
+      continue;
+    }
+    if (batch.status !== "completed") {
+      await fail(batch.status);
       continue;
     }
     const counts = { succeeded: 0, invalid: 0, retry: 0, skipped: 0 };
@@ -89,31 +102,25 @@ export async function pollTriageBatches(deps: TriageDeps): Promise<void> {
       [b.id],
     );
     const pending = new Set(open.map((x) => x.id));
-    for await (const r of await client.messages.batches.results(b.id)) {
+    for (const r of batch.results ?? []) {
       const itemId = r.custom_id;
       if (!pending.has(itemId)) {
         counts.skipped++;
         continue;
       }
-      switch (r.result.type) {
-        case "succeeded": {
-          const msg = r.result.message;
-          await recordUsage(pool, deps.prices, { task: "triage", model: msg.model, usage: msg.usage, batch: true });
-          const outcome = parseTriageMessage(msg);
-          await applyTriage(pool, itemId, outcome, msg.model);
-          counts[outcome.ok ? "succeeded" : "invalid"]++;
-          break;
-        }
-        case "errored":
-          if (r.result.error.error?.type === "invalid_request_error") {
-            await applyTriage(pool, itemId, { ok: false, reason: "requisição inválida" }, deps.model);
-            counts.invalid++;
-          } else {
-            counts.retry++; // continua 'new' e entra no próximo lote
-          }
-          break;
-        default: // expired | canceled
-          counts.retry++;
+      const status = r.response?.status_code;
+      if (status === 200 && r.response?.body) {
+        const msg = r.response.body as Anthropic.Message;
+        await recordUsage(pool, deps.prices, { task: "triage", model: msg.model || deps.model, usage: msg.usage, batch: true });
+        const outcome = parseTriageMessage(msg);
+        await applyTriage(pool, itemId, outcome, msg.model || deps.model);
+        counts[outcome.ok ? "succeeded" : "invalid"]++;
+      } else if (status && status >= 400 && status < 500 && status !== 429) {
+        // Erro de cliente não melhora tentando de novo.
+        await applyTriage(pool, itemId, { ok: false, reason: `requisição inválida (${status})` }, deps.model);
+        counts.invalid++;
+      } else {
+        counts.retry++; // continua 'new' e entra no próximo lote
       }
     }
     await pool.query("update llm_batches set status = 'ended', ended_at = now() where id = $1", [b.id]);
