@@ -16,6 +16,7 @@ import { publishDueBlogPosts, revalidate } from "./publish/blog";
 import { publishDueInstagramPosts, refreshInstagramTokens } from "./publish/instagram";
 import { publishDueLinkedinPosts, refreshLinkedinTokens } from "./publish/linkedin";
 import { consumeRender } from "./render/worker";
+import { processManualRequest } from "./manual/worker";
 
 /**
  * Fase 0: esqueleto do executor.
@@ -147,6 +148,17 @@ async function storyWorker() {
   }
 }
 
+/** Notícia manual (/admin/nova): um pedido por vez; a story segue para a fila story_build como as demais. */
+async function manualWorker() {
+  const deps = await triageDeps();
+  if (!deps) return;
+  try {
+    await processManualRequest(deps);
+  } catch (err) {
+    log.error({ module: "manual", err: (err as Error).message }, "manual worker failed");
+  }
+}
+
 /** Publicação no blog (§4.10): a cada minuto, publica os posts vencidos e atualiza o site. */
 async function publishBlog() {
   if (!state.dbOk) return;
@@ -247,6 +259,7 @@ const jobs = [
   new Cron("45 * * * * *", { protect: true, timezone: "UTC" }, triagePoll),
   new Cron("50 * * * * *", { protect: true, timezone: "UTC" }, selection),
   new Cron("*/20 * * * * *", { protect: true, timezone: "UTC" }, storyWorker),
+  new Cron("15,35 * * * * *", { protect: true, timezone: "UTC" }, manualWorker),
   new Cron("10 * * * * *", { protect: true, timezone: "UTC" }, publishBlog),
   new Cron("5,25,45 * * * * *", { protect: true, timezone: "UTC" }, renderWorker),
   new Cron("40 * * * * *", { protect: true, timezone: "UTC" }, publishInstagram),
