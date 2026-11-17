@@ -112,6 +112,13 @@ describe("extração da matéria", () => {
     expect(body).not.toMatch(/Menu|Rodapé|Leia também|alert/);
   });
 
+  it("matéria em <div> com poucos <p> de legenda usa o texto inteiro do escopo", () => {
+    const html = `<html><body><main><p>Foto: divulgação da empresa afetada pelo ataque.</p>${`<div>${PARAGRAPH}</div>`.repeat(6)}</main></body></html>`;
+    const body = articleBody(html);
+    expect(body).toContain("1.234 servidores");
+    expect(body.length).toBeGreaterThan(PARAGRAPH.length * 5);
+  });
+
   it("texto colado: 1ª linha vira título, sem # do markdown, com teto de tamanho", () => {
     const r = splitPastedText(`# Ransomware atinge hospital\n\n${"Parágrafo com detalhes. ".repeat(1000)}`);
     expect(r.title).toBe("Ransomware atinge hospital");

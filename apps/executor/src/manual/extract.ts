@@ -43,7 +43,11 @@ export function articleBody(html: string): string {
   const blocks = [...scope.matchAll(/<(p|h[1-4]|li|blockquote|pre)\b[^>]*>([\s\S]*?)<\/\1>/gi)]
     .map((m) => cleanText(m[2]!).replace(/\s+/g, " ").trim())
     .filter((t) => t.length >= 30 || (t.length >= 15 && /^[A-ZÀ-Ú0-9]/.test(t)));
-  return blocks.length ? blocks.join("\n\n") : cleanText(scope);
+  // Matéria em <div> com só legendas/chamadas em <p>: os blocos cobririam uma fração do texto e o redator
+  // receberia só esses trechos. Nesse caso usa o texto inteiro do escopo (já sem nav/header/footer/aside).
+  const full = cleanText(scope);
+  const joined = blocks.join("\n\n");
+  return joined.length >= full.length * 0.5 ? joined : full;
 }
 
 /** Extrai título, descrição, veículo, data e texto de uma página de notícia. */
