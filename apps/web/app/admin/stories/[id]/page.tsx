@@ -105,7 +105,9 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
       <ul className="source-list">
         {sources.map((s) => (
           <li key={s.id}>
-            <a href={s.url} target="_blank" rel="noopener noreferrer nofollow">{s.title} <ExternalLink className="icon" size={12} aria-hidden="true" /></a>
+            {/^https?:\/\//.test(s.url)
+              ? <a href={s.url} target="_blank" rel="noopener noreferrer nofollow">{s.title} <ExternalLink className="icon" size={12} aria-hidden="true" /></a>
+              : <span>{s.title} <span className="chip">texto enviado</span></span>}
             <span className="story-card__meta"> · {s.source} · {fmtDateTime(s.published_at)}</span>
           </li>
         ))}

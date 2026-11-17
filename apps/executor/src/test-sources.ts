@@ -20,7 +20,7 @@ const { rows } = await pool.query<SourceRow & { enabled: boolean }>(
   `select s.id, s.brand_id, s.name, s.kind, s.url, s.lang, s.trust_weight::float8 as trust_weight,
           s.fetch_interval_min, s.config, null::text as etag, null::text as last_modified, s.consecutive_failures, s.enabled
      from sources s join brands b on b.id = s.brand_id
-    where b.slug = $1 ${all ? "" : "and s.enabled"}
+    where b.slug = $1 and s.kind <> 'manual' ${all ? "" : "and s.enabled"}
     order by s.name`,
   [config.BRAND_SLUG],
 );

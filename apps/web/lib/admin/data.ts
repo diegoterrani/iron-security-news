@@ -89,13 +89,39 @@ export async function getStory(id: string): Promise<{ story: StoryRow; contents:
   if (!story) return null;
   const [{ data: contents }, { data: links }] = await Promise.all([
     supabase.from("latest_contents").select("id, channel, lang, kind, version, title, body, edited_by, model, prompt_version, created_at").eq("story_id", id),
-    supabase.from("story_sources").select("raw_items(id, title, url, published_at, sources(name))").eq("story_id", id),
+    supabase.from("story_sources").select("raw_items(id, title, url, published_at, source_label, sources(name))").eq("story_id", id),
   ]);
   const sources = (links ?? []).flatMap((l) => {
-    const r = l.raw_items as unknown as { id: string; title: string; url: string; published_at: string | null; sources: { name: string } | null } | null;
-    return r ? [{ id: r.id, title: r.title, url: r.url, published_at: r.published_at, source: r.sources?.name ?? "" }] : [];
+    const r = l.raw_items as unknown as {
+      id: string; title: string; url: string; published_at: string | null; source_label: string | null; sources: { name: string } | null;
+    } | null;
+    return r ? [{ id: r.id, title: r.title, url: r.url, published_at: r.published_at, source: r.source_label ?? r.sources?.name ?? "" }] : [];
   });
   return { story: story as unknown as StoryRow, contents: (contents ?? []) as ContentRow[], sources };
+}
+
+export interface ManualRequestRow {
+  id: string;
+  kind: "url" | "text";
+  input_url: string | null;
+  source_name: string | null;
+  status: "pending" | "processing" | "done" | "failed";
+  error: string | null;
+  story_id: string | null;
+  created_at: string;
+  stories: { status: StoryStatus } | null;
+}
+
+/** Últimos pedidos de notícia manual (RLS: editor ou admin). */
+export async function listManualRequests(limit = 20): Promise<ManualRequestRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("manual_requests")
+    .select("id, kind, input_url, source_name, status, error, story_id, created_at, stories(status)")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as ManualRequestRow[];
 }
 
 /** Mensagens das RPCs de revisão (o banco devolve o código no texto do erro). */

@@ -59,7 +59,8 @@ export function writerUserContent(sources: BuildSource[], facts: Facts, story: P
     exists_in_nvd: f.exists, severity: f.cvss?.severity ?? null, description: f.description ?? null,
   }]));
   const blocks = sources.map((s) => [
-    `<source id="${s.id}" name="${attr(s.name)}" url="${attr(s.url)}"${s.published_at ? ` published="${s.published_at.toISOString().slice(0, 10)}"` : ""}>`,
+    // URL interna (texto colado sem link) não vai ao redator: ele só lista em "Fontes" URLs de <source>.
+    `<source id="${s.id}" name="${attr(s.name)}"${s.url.startsWith("urn:") ? "" : ` url="${attr(s.url)}"`}${s.published_at ? ` published="${s.published_at.toISOString().slice(0, 10)}"` : ""}>`,
     `Título: ${s.title}`,
     s.summary ? `Resumo: ${s.summary}` : "",
     s.excerpt && s.excerpt !== s.summary ? `Trecho: ${s.excerpt}` : "",
@@ -180,7 +181,7 @@ const firstIssue = (e: { issues: { path: PropertyKey[]; message: string }[] }) =
 
 async function loadSources(pool: Pool, storyId: string): Promise<BuildSource[]> {
   const { rows } = await pool.query<BuildSource>(
-    `select r.id, s.name, r.url, r.title, r.summary, r.content_excerpt as excerpt, r.published_at
+    `select r.id, coalesce(r.source_label, s.name) as name, r.url, r.title, r.summary, r.content_excerpt as excerpt, r.published_at
        from story_sources ss join raw_items r on r.id = ss.raw_item_id join sources s on s.id = r.source_id
       where ss.story_id = $1
       order by r.relevance desc nulls last, s.trust_weight desc`,

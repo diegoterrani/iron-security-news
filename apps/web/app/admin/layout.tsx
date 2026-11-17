@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import {
-  CalendarClock, CheckCheck, Coins, Inbox, KeyRound, Plug, Rss, Users, Video, Workflow,
+  CalendarClock, CheckCheck, Coins, FilePlus2, Inbox, KeyRound, Plug, Rss, Users, Video, Workflow,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { fontVars } from "@/lib/fonts";
@@ -23,6 +23,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     title: "Revisão",
     items: [
       { label: "Fila de revisão", icon: Inbox, href: "/admin" },
+      { label: "Nova notícia", icon: FilePlus2, href: "/admin/nova" },
       { label: "Agendadas", icon: CalendarClock },
       { label: "Publicadas", icon: CheckCheck },
     ],

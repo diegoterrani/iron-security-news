@@ -1797,3 +1797,22 @@ Workers: `console.log(JSON.stringify(…))` + Workers Logs habilitado. Vercel: l
 
 ---
 *Documento gerado por Claude (Anthropic) — Arquiteto de Soluções SaaS · IRON CYBER NEWS v1.0*
+
+## ANEXO C — Notícia manual (/admin/nova)
+
+Adicionado em 17/11/2026. O editor cola um **link** ou um **texto** e a notícia sai no mesmo padrão das demais.
+
+```
+painel /admin/nova ──RPC manual_story_request (editor + MFA, teto 5 em andamento / 30 por dia)──► manual_requests (pending)
+executor (cron 15,35 s) ──► claim (for update skip locked)
+   link:  safeFetch (só https:443, sem credenciais, lookup do socket recusa IP interno, redirects revalidados,
+          3 MB, 20 s, só text/html|text/plain) ──► extractArticle (<article>/<main>, og:*, data)
+   texto: splitPastedText (1ª linha = título)
+   ──► raw_items (fonte "Envio manual", source_label = veículo, texto até 12.000 caracteres em summary)
+   ──► triagem síncrona (mesmo prompt; "não relevante" não descarta, só registra)
+   ──► stories DRAFTING (sem cluster) + story_sources ──► fila story_build ──► buildStory (igual à seleção diária)
+```
+
+- Erros permanentes (link inválido, IP interno, 4xx, paywall/SPA sem texto) falham na hora com mensagem para o editor; rede/5xx/429 tentam até 3 vezes.
+- Texto colado sem link da fonte usa a URL `urn:ironnews:manual:<id>`, que não é enviada ao redator (ele só lista em "Fontes" URLs de `<source>`).
+- O conteúdo enviado continua sendo fonte não confiável para o modelo (regra 10 do redator) e passa pelo Fact Guard: números e CVEs só entram se estiverem no texto.
