@@ -218,6 +218,7 @@ DRAFTING ──build ok──▶ AWAITING_REVIEW ──approve──▶ SCHEDULE
 - RN-STO02: Seleciona `posts_per_day` clusters com `score ≥ min_score` (padrão 55), sem story, `last_seen_at` nas últimas 36 h, evitando 2 stories da mesma categoria no dia quando houver alternativa.
 - RN-STO03: Nada acima do `min_score` → alerta Telegram "sem pauta"; editor pode promover candidato manualmente (`POST /candidates/:clusterId/promote`) ou criar por URL (`POST /stories/manual`).
 - RN-STO04: Slugs: `slugify(title)` + sufixo `-<6 chars do id>` quando colidir.
+- RN-STO05 (modo quase real-time, `settings.realtime_enabled`, padrão desligado): a cada minuto, triagem síncrona dos itens frescos (últimas 3 h) e, havendo cluster com `score ≥ realtime_min_score` (padrão 70), publicado há menos de 24 h e sem story, cria UMA story. Freios: `max_posts_per_day` (padrão 8, rejeitadas não contam) e `min_gap_min` (padrão 15) entre stories. Convive com a seleção diária; um advisory lock evita story duplicada para o mesmo cluster. A story segue o fluxo normal (AWAITING_REVIEW → aprovação humana).
 
 ### 4.5 Content Generation
 **Responsabilidade:** artigo PT+EN e derivados por canal.
