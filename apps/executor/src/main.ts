@@ -9,7 +9,7 @@ import { createEmbedder } from "./ingest/embeddings";
 import { ingestDue, purgeOldItems } from "./ingest/ingest";
 import { parsePriceTable } from "./llm/usage";
 import { pollTriageBatches, submitTriageBatch, type TriageDeps } from "./triage/run";
-import { runSelectionIfDue } from "./triage/selection";
+import { runRealtimeSelection, runSelectionIfDue } from "./triage/selection";
 import { Queue } from "./queue";
 import { consumeStoryBuild } from "./story/worker";
 import { publishDueBlogPosts, revalidate } from "./publish/blog";
@@ -100,7 +100,7 @@ async function triageDeps(): Promise<TriageDeps | null> {
   return { pool, log, client: llm!, batches: batches!, brandId, model: config.LLM_MODEL_DEFAULT, prices };
 }
 
-/** Triagem em lote a cada 30 min (RN-TRI01) e coleta dos lotes prontos a cada minuto. */
+/** Triagem em lote a cada 10 min (RN-TRI01) e coleta dos lotes prontos a cada minuto. */
 async function triageSubmit() {
   const deps = await triageDeps();
   if (!deps) return;
@@ -129,6 +129,18 @@ async function selection() {
     await runSelectionIfDue(deps);
   } catch (err) {
     log.error({ module: "selection", err: (err as Error).message }, "selection failed");
+  }
+}
+
+/** Modo quase real-time: pauta urgente vira story em minutos, sem esperar a seleção diária. */
+async function realtimeSelection() {
+  if (!config.SELECTION_ENABLED) return;
+  const deps = await triageDeps();
+  if (!deps) return;
+  try {
+    await runRealtimeSelection(deps);
+  } catch (err) {
+    log.error({ module: "realtime", err: (err as Error).message }, "realtime selection failed");
   }
 }
 
@@ -255,9 +267,10 @@ const jobs = [
   new Cron("* * * * *", { protect: true, timezone: "UTC" }, tick),
   new Cron("30 * * * * *", { protect: true, timezone: "UTC" }, ingest),
   new Cron("17 6 * * *", { protect: true, timezone: "UTC" }, maintenance),
-  new Cron("0 5,35 * * * *", { protect: true, timezone: "UTC" }, triageSubmit),
+  new Cron("0 5,15,25,35,45,55 * * * *", { protect: true, timezone: "UTC" }, triageSubmit),
   new Cron("45 * * * * *", { protect: true, timezone: "UTC" }, triagePoll),
   new Cron("50 * * * * *", { protect: true, timezone: "UTC" }, selection),
+  new Cron("20 * * * * *", { protect: true, timezone: "UTC" }, realtimeSelection),
   new Cron("*/20 * * * * *", { protect: true, timezone: "UTC" }, storyWorker),
   new Cron("15,35 * * * * *", { protect: true, timezone: "UTC" }, manualWorker),
   new Cron("10 * * * * *", { protect: true, timezone: "UTC" }, publishBlog),

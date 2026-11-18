@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { toOpenRouterModel } from "../src/llm/client";
 import { costUsd, parsePriceTable, DEFAULT_PRICES } from "../src/llm/usage";
 import { coerceTriage, parseTriageMessage, sourceBlock, triageParams } from "../src/triage/triage";
-import { localClock, pickClusters, selectionMinute } from "../src/triage/selection";
+import { localClock, pickClusters, realtimeGate, selectionMinute } from "../src/triage/selection";
 
 const valid = {
   is_relevant: true,
@@ -117,5 +117,23 @@ describe("OpenRouter: nomes de modelo", () => {
     expect(toOpenRouterModel("anthropic/claude-haiku-5.5")).toBe("anthropic/claude-haiku-5.5");
     expect(toOpenRouterModel("anthropic/claude-haiku-5.5:batch")).toBe("anthropic/claude-haiku-5.5");
     expect(toOpenRouterModel("deepseek/deepseek-v4.1-flash")).toBe("deepseek/deepseek-v4.1-flash");
+  });
+});
+
+describe("modo real-time (freios)", () => {
+  const now = new Date("2026-11-18T15:00:00Z");
+  const base = { createdToday: 2, maxPerDay: 8, lastCreatedAt: null, gapMin: 15, now };
+  it("libera quando há folga no teto e no intervalo", () => {
+    expect(realtimeGate(base)).toEqual({ ok: true });
+    expect(realtimeGate({ ...base, lastCreatedAt: new Date("2026-11-18T14:44:00Z") })).toEqual({ ok: true });
+  });
+  it("bloqueia no teto diário", () => {
+    expect(realtimeGate({ ...base, createdToday: 8 })).toEqual({ ok: false, reason: "daily_cap" });
+  });
+  it("bloqueia dentro do intervalo mínimo", () => {
+    expect(realtimeGate({ ...base, lastCreatedAt: new Date("2026-11-18T14:50:00Z") })).toEqual({ ok: false, reason: "gap" });
+  });
+  it("intervalo 0 desliga o freio de intervalo", () => {
+    expect(realtimeGate({ ...base, gapMin: 0, lastCreatedAt: now })).toEqual({ ok: true });
   });
 });
