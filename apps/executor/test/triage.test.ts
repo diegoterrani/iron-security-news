@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { toOpenRouterModel } from "../src/llm/client";
 import { costUsd, parsePriceTable, DEFAULT_PRICES } from "../src/llm/usage";
 import { coerceTriage, parseTriageMessage, sourceBlock, triageParams } from "../src/triage/triage";
-import { localClock, pickClusters, realtimeGate, selectionMinute } from "../src/triage/selection";
+import { DEDUP_COSINE, cosine, localClock, pickClusters, realtimeGate, selectionMinute } from "../src/triage/selection";
 
 const valid = {
   is_relevant: true,
@@ -135,5 +135,30 @@ describe("modo real-time (freios)", () => {
   });
   it("intervalo 0 desliga o freio de intervalo", () => {
     expect(realtimeGate({ ...base, gapMin: 0, lastCreatedAt: now })).toEqual({ ok: true });
+  });
+});
+
+describe("dedupe de pautas do mesmo evento", () => {
+  const v = (...n: number[]) => `[${n.join(",")}]`;
+  it("cosseno básico", () => {
+    expect(cosine([1, 0], [1, 0])).toBeCloseTo(1);
+    expect(cosine([1, 0], [0, 1])).toBeCloseTo(0);
+    expect(cosine([], [1])).toBe(0);
+  });
+  it("não escolhe dois clusters do mesmo evento, mesmo na 2ª passada", () => {
+    expect(DEDUP_COSINE).toBeLessThan(0.85);
+    const c = [
+      { id: "a", category: "zero_day", score: 90, centroid: v(1, 0, 0) },
+      { id: "b", category: "zero_day", score: 85, centroid: v(0.98, 0.1, 0) },
+      { id: "c", category: "malware", score: 70, centroid: v(0, 1, 0) },
+    ];
+    expect(pickClusters(c, 3, 55).map((x) => x.id)).toEqual(["a", "c"]);
+  });
+  it("sem centroide não bloqueia (comportamento anterior)", () => {
+    const c = [
+      { id: "a", category: "zero_day", score: 90 },
+      { id: "b", category: "zero_day", score: 85 },
+    ];
+    expect(pickClusters(c, 2, 55).map((x) => x.id)).toEqual(["a", "b"]);
   });
 });

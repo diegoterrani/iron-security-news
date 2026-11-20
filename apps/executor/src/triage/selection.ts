@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
+import { fromPgVector } from "../ingest/embeddings";
 import type { Pool } from "../db";
 import type { Logger } from "../logger";
 import { budgetStatus } from "../llm/usage";
@@ -37,23 +38,65 @@ export interface Candidate {
   id: string;
   category: string | null;
   score: number;
+  /** Centroide (texto do pgvector); usado só para evitar duas pautas do mesmo evento na mesma rodada. */
+  centroid?: string | null;
 }
+
+/**
+ * Cosseno a partir do qual dois clusters são o MESMO evento para efeito de pauta. Mais baixo que o do
+ * agrupamento (0,85): o mesmo fato em EN/PT ou com outro ângulo fica entre 0,78 e 0,86, e eventos
+ * diferentes ficam abaixo de 0,72. Medido em produção em 20/11/2026.
+ */
+export const DEDUP_COSINE = 0.8;
+/** Uma story criada nesse prazo "cobre" o evento; clusters parecidos não viram nova story. */
+const DEDUP_WINDOW_HOURS = 72;
+
+export function cosine(a: number[], b: number[]): number {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length && i < b.length; i++) {
+    dot += a[i]! * b[i]!;
+    na += a[i]! * a[i]!;
+    nb += b[i]! * b[i]!;
+  }
+  return na && nb ? dot / Math.sqrt(na * nb) : 0;
+}
+
+const parseVec = (c: Candidate) => (c.centroid ? fromPgVector(c.centroid) : null);
+
+/** Condição SQL (sobre `c`): o cluster ainda não é coberto por uma story recente, nem por CVE nem por similaridade. */
+const NOT_COVERED_BY_RECENT_STORY = `
+  and not exists (
+    select 1 from stories st join clusters sc on sc.id = st.cluster_id
+     where st.brand_id = c.brand_id and st.status <> 'REJECTED' and sc.id <> c.id
+       and st.created_at > now() - interval '${DEDUP_WINDOW_HOURS} hours'
+       and (sc.cve_ids && c.cve_ids
+            or (sc.centroid is not null and c.centroid is not null and 1 - (sc.centroid <=> c.centroid) >= ${DEDUP_COSINE})))`;
 
 /** RN-STO02: os N melhores, evitando duas stories da mesma categoria quando houver alternativa. */
 export function pickClusters(cands: Candidate[], n: number, minScore: number): Candidate[] {
   const eligible = cands.filter((c) => c.score >= minScore).sort((a, b) => b.score - a.score);
   const picked: Candidate[] = [];
+  const vecs = new Map<Candidate, number[] | null>();
+  const vec = (c: Candidate) => {
+    if (!vecs.has(c)) vecs.set(c, parseVec(c));
+    return vecs.get(c)!;
+  };
+  // Dois clusters do mesmo evento nunca entram juntos, nem na 2ª passada (que só relaxa a categoria).
+  const sameEvent = (c: Candidate) => {
+    const v = vec(c);
+    return !!v && picked.some((p) => { const pv = vec(p); return !!pv && cosine(v, pv) >= DEDUP_COSINE; });
+  };
   const used = new Set<string>();
   for (const c of eligible) {
     if (picked.length >= n) break;
-    if (!used.has(c.category ?? "other")) {
+    if (!used.has(c.category ?? "other") && !sameEvent(c)) {
       picked.push(c);
       used.add(c.category ?? "other");
     }
   }
   for (const c of eligible) {
     if (picked.length >= n) break;
-    if (!picked.includes(c)) picked.push(c);
+    if (!picked.includes(c) && !sameEvent(c)) picked.push(c);
   }
   return picked;
 }
@@ -148,11 +191,12 @@ export async function runSelectionIfDue(deps: TriageDeps & { log: Logger }, now 
       return null;
     }
     const { rows: cands } = await client.query<Candidate>(
-      `select c.id, c.category, cluster_score(c)::float8 as score
+      `select c.id, c.category, cluster_score(c)::float8 as score, c.centroid::text as centroid
          from clusters c
         where c.brand_id = $1 and not c.blocked and c.relevance_max > 0
           and c.last_seen_at > now() - interval '36 hours'
           and not exists (select 1 from stories st where st.cluster_id = c.id)
+          ${NOT_COVERED_BY_RECENT_STORY}
         order by score desc limit 50`,
       [brandId],
     );
@@ -236,13 +280,19 @@ export async function runRealtimeSelection(deps: TriageDeps & { log: Logger }, n
     await client.query("begin");
     await client.query(SELECTION_LOCK);
     const { rows: cands } = await client.query<Candidate>(
-      `select c.id, c.category, cluster_score(c)::float8 as score
+      `select c.id, c.category, cluster_score(c)::float8 as score, c.centroid::text as centroid
          from clusters c
         where c.brand_id = $1 and not c.blocked and c.relevance_max > 0
           and c.last_seen_at > now() - make_interval(hours => $2)
           and exists (select 1 from raw_items r
                        where r.cluster_id = c.id and coalesce(r.published_at, r.fetched_at) > now() - make_interval(hours => $3))
           and not exists (select 1 from stories st where st.cluster_id = c.id)
+          ${NOT_COVERED_BY_RECENT_STORY}
+          -- CVE só do NVD (sem imprensa, KEV ou alerta) só entra com sinal de urgência; senão espera a seleção diária.
+          and (exists (select 1 from raw_items r join sources so on so.id = r.source_id
+                        where r.cluster_id = c.id and so.kind <> 'nvd')
+               or coalesce((c.flags->>'exploited')::boolean, false) or coalesce((c.flags->>'in_kev')::boolean, false)
+               or coalesce((c.flags->>'zero_day')::boolean, false) or coalesce((c.flags->>'brazil')::boolean, false))
         order by score desc limit 20`,
       [brandId, REALTIME_WINDOW_HOURS, REALTIME_ARTICLE_MAX_HOURS],
     );
