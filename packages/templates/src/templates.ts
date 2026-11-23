@@ -105,9 +105,9 @@ function paragraph(text: string, size: number, color: string = C.muted): El {
 /** Véus sobre a ilustração (cor --paper #090f0d): mais fortes onde fica o texto. */
 const VEIL = {
   /** Cards largos: texto à esquerda, ilustração aparece à direita. */
-  left: "linear-gradient(90deg, rgba(9,15,13,0.96) 0%, rgba(9,15,13,0.84) 45%, rgba(9,15,13,0.3) 100%)",
+  left: "linear-gradient(90deg, rgba(9,15,13,0.96) 0%, rgba(9,15,13,0.84) 45%, rgba(9,15,13,0.18) 100%)",
   /** Capas verticais: ilustração visível no topo, texto legível no meio e embaixo. */
-  vertical: "linear-gradient(180deg, rgba(9,15,13,0.35) 0%, rgba(9,15,13,0.62) 30%, rgba(9,15,13,0.82) 62%, rgba(9,15,13,0.95) 100%)",
+  vertical: "linear-gradient(180deg, rgba(9,15,13,0.28) 0%, rgba(9,15,13,0.6) 26%, rgba(9,15,13,0.82) 50%, rgba(9,15,13,0.95) 100%)",
   /** Slides de texto e CTA: só textura. */
   texture: "linear-gradient(180deg, rgba(9,15,13,0.86) 0%, rgba(9,15,13,0.94) 100%)",
 } as const;
