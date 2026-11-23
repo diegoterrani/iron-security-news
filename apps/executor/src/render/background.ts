@@ -22,44 +22,93 @@ const FLUX = "@cf/black-forest-labs/flux-1-schnell";
 
 const attr = (s: string) => s.replace(/["<>&]/g, " ").trim();
 
+/** Sufixos fixos (atual e do image@2): iguais em todo prompt, só gastam tokens no histórico. */
+const SUFFIX_IMAGE2 =
+  "Empty dark negative space on the left, dark green-black palette, muted moss green highlights, blank unmarked surfaces, minimalist, photorealistic.";
+const stripSuffix = (p: string) => [SUFFIX, SUFFIX_IMAGE2].reduce((acc, sfx) => acc.replace(sfx, ""), p).trim().replace(/\.$/, "");
+
+/** Quantos prompts recentes vão ao modelo para ele não repetir assunto e cenário. */
+export const RECENT_PROMPTS = 8;
+
+/** Prompts das últimas ilustrações (de outras stories), sem o sufixo fixo, que não ajuda a diferenciar. */
+export async function recentImagePrompts(pool: Pool, storyId: string, limit = RECENT_PROMPTS): Promise<string[]> {
+  const { rows } = await pool.query<{ prompt: string | null }>(
+    `select meta->>'prompt' as prompt from assets
+      where kind = 'background' and status = 'ready' and story_id <> $1 and meta ? 'prompt'
+      order by created_at desc limit $2`,
+    [storyId, limit],
+  );
+  return rows.map((r) => stripSuffix(r.prompt ?? "")).filter(Boolean);
+}
+
+/**
+ * Mensagem do usuário para o modelo do prompt. Título, resumo e prompts recentes são dados não confiáveis:
+ * vão delimitados, com tamanho limitado e sem os caracteres que fechariam as tags.
+ */
+export function imagePromptInput(story: { title: string; tldr: string; category: string }, recent: string[] = []): string {
+  const clean = (s: string, max: number) => s.replace(/[<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+  const recentBlock = recent.length
+    ? `\n<recent>\n${recent.slice(0, RECENT_PROMPTS).map((p) => `- ${clean(p, 240)}`).join("\n")}\n</recent>`
+    : "";
+  return `<story category="${attr(story.category)}">\nTítulo: ${clean(story.title, 300)}\nResumo: ${clean(story.tldr, 1200)}\n</story>${recentBlock}`;
+}
+
 /** Prompt da imagem a partir do tema (o texto da story vai em <story>, como material não confiável). */
 export async function imagePrompt(
   llm: NonNullable<BackgroundDeps["llm"]>, pool: Pool, storyId: string,
   story: { title: string; tldr: string; category: string },
 ): Promise<string> {
+  // Sem histórico (falha de leitura), o prompt ainda sai; só perde a proteção contra repetição.
+  const recent = await recentImagePrompts(pool, storyId).catch(() => [] as string[]);
   const msg = await llm.client.messages.create({
     model: llm.model,
     max_tokens: 2000,
     system: [{ type: "text", text: IMAGE_PROMPT_SYSTEM, cache_control: { type: "ephemeral" } }],
     output_config: { effort: "low", format: jsonSchemaFormat(PromptSchema) },
-    messages: [{ role: "user", content: `<story category="${attr(story.category)}">\nTítulo: ${story.title}\nResumo: ${story.tldr}\n</story>` }],
+    messages: [{ role: "user", content: imagePromptInput(story, recent) }],
   });
   await recordUsage(pool, llm.prices, { storyId, task: "image_prompt", model: msg.model, usage: msg.usage, batch: false });
   const text = msg.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "";
   const parsed = PromptSchema.safeParse(JSON.parse(text || "{}"));
   if (!parsed.success) throw new Error(`prompt de imagem inválido (${msg.stop_reason})`);
-  return fluxPrompt(parsed.data.prompt);
+  return fluxPrompt(parsed.data.prompt, story.category);
 }
 
 const NEGATION = /\b(no|not|without|avoid|free of)\b/i;
 const WRITING = /\b(text|texts|letters?|words?|labels?|labell?ed|signs?|signage|logos?|screens?|displays?|code|numbers?|numerals?|typography|captions?|writing|written|font)\b/i;
 const PEOPLE = /\b(people|person|persons|faces?|humans?|hands?|hacker)\b/i;
-const SUFFIX =
-  "Empty dark negative space on the left, dark green-black palette, muted moss green highlights, blank unmarked surfaces, minimalist, photorealistic.";
+/** Só o Brand Kit (paleta e espaço do texto). O assunto e o cenário vêm do prompt da notícia. */
+export const SUFFIX = "Moss green and charcoal color grade, empty dark left third, unmarked surfaces, photorealistic.";
+
+/** Assunto de reserva por categoria, para quando nada do prompt do modelo sobrevive à limpeza. */
+const FALLBACK_SUBJECT: Record<string, string> = {
+  ransomware: "Macro photograph of a heavy steel padlock and chain wrapped around a metal filing cabinet on the right",
+  zero_day: "Macro photograph of a cracked glass lens with a thin beam of cold light on the right",
+  vulnerability: "Close-up of a brushed metal door lock with a small crack in its cylinder on the right",
+  data_breach: "Still life of an open steel vault with scattered blank paper folders on the right",
+  malware: "Macro photograph of a circuit board with a dark organic growth spreading across it on the right",
+  apt_campaign: "Aerial night view of a dark city power grid with a few glowing substations on the right",
+  phishing_fraud: "Macro photograph of a metal fishing hook holding a blank bank card on the right",
+  cloud_security: "Wide shot of low dark storm clouds over a steel transmission tower on the right",
+  regulation_privacy: "Still life of a judge gavel resting on a closed leather folder on the right",
+  ai_security: "Macro photograph of a mechanical eye made of brushed metal and glass on the right",
+  supply_chain: "Wide night shot of stacked shipping containers at an empty port on the right",
+};
+const FALLBACK_DEFAULT = "Macro photograph of a brushed steel key resting on a dark stone surface on the right";
 
 /**
  * Prompt final do FLUX. O schnell não entende negação e desenha qualquer palavra ligada a escrita,
  * então tiramos cláusulas negativas, cláusulas que citam escrita/pessoas e siglas (GPU, SSH…),
  * e fechamos com um sufixo só de termos positivos do Brand Kit.
  */
-export function fluxPrompt(raw: string): string {
+export function fluxPrompt(raw: string, category?: string): string {
   const clauses = raw
     .split(/[,.;:]/)
     .map((c) => c.trim())
     .filter((c) => c && !NEGATION.test(c) && !WRITING.test(c) && !PEOPLE.test(c))
     .map((c) => c.replace(/\b[A-Z][A-Z0-9-]+\b/g, "").replace(/\s{2,}/g, " ").trim())
     .filter((c) => c.length > 2);
-  const base = clauses.length ? clauses.join(", ") : "Cinematic photograph of a dim server room with unmarked metal racks on the right";
+  const base = clauses.length ? clauses.join(", ") : (category && FALLBACK_SUBJECT[category]) || FALLBACK_DEFAULT;
   return `${base}. ${SUFFIX}`;
 }
 
