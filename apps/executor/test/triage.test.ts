@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { toOpenRouterModel } from "../src/llm/client";
 import { costUsd, parsePriceTable, DEFAULT_PRICES } from "../src/llm/usage";
 import { coerceTriage, parseTriageMessage, sourceBlock, triageParams } from "../src/triage/triage";
-import { DEDUP_COSINE, cosine, localClock, pickClusters, realtimeGate, selectionMinute } from "../src/triage/selection";
+import { DEDUP_COSINE, cosine, cumulativeQuota, dueSlot, localClock, pickClusters, realtimeGate, selectionMinute, selectionSlots } from "../src/triage/selection";
+import { TRIAGE_PROMPT_VERSION, TRIAGE_SYSTEM } from "@ironnews/shared";
 
 const valid = {
   is_relevant: true,
@@ -11,6 +12,7 @@ const valid = {
   category: "ransomware",
   severity: "high",
   relevance: 0.82,
+  br_impact: 1,
   flags: { zero_day: false, exploited: true, brazil: true },
   entities: { cves: ["CVE-2026-1234"], vendors: ["Acme"], threat_actors: ["LockBit"], victims: ["Hospital X"], countries: ["BR"] },
   one_line: "Ransomware atinge hospital no Brasil.",
@@ -18,6 +20,20 @@ const valid = {
 
 const msg = (text: string | null, stop: Anthropic.Message["stop_reason"] = "end_turn") =>
   ({ content: text === null ? [] : [{ type: "text", text, citations: null }], stop_reason: stop }) as unknown as Anthropic.Message;
+
+describe("triage@2: impacto no Brasil", () => {
+  it("prompt pede br_impact com régua exigente para o mercado brasileiro", () => {
+    expect(TRIAGE_PROMPT_VERSION).toBe("triage@2");
+    expect(TRIAGE_SYSTEM).toMatch(/br_impact vai de 0 a 1/);
+    expect(TRIAGE_SYSTEM).toMatch(/0 a 0,3 = produto de nicho/);
+  });
+  it("br_impact é obrigatório e fica entre 0 e 1", () => {
+    const { br_impact: _omit, ...without } = valid;
+    expect(parseTriageMessage(msg(JSON.stringify(without))).ok).toBe(false);
+    const r = parseTriageMessage(msg(JSON.stringify({ ...valid, br_impact: 1.7 })));
+    expect(r.ok && r.triage.br_impact).toBe(1);
+  });
+});
 
 describe("parseTriageMessage (RN-TRI02)", () => {
   it("aceita saída válida", () => {
@@ -92,6 +108,25 @@ describe("seleção (RN-STO01/02)", () => {
   it("horário = primeira publicação − lead time", () => {
     expect(selectionMinute({ publish_times: { blog: ["08:00"], instagram: ["12:00"] }, lead_time_min: 120 })).toBe(6 * 60);
     expect(selectionMinute({ publish_times: { blog: ["01:00"] }, lead_time_min: 120 })).toBe(0);
+  });
+  it("uma rodada por horário do blog, ordenada, ignorando horário inválido", () => {
+    const slots = selectionSlots({ publish_times: { blog: ["17:00", "08:00", "25:00", "08:00"], instagram: ["12:00"] }, lead_time_min: 120 });
+    expect(slots).toEqual([{ time: "08:00", minute: 6 * 60 }, { time: "17:00", minute: 15 * 60 }]);
+    // Sem blog: comportamento antigo (primeiro horário de qualquer canal).
+    expect(selectionSlots({ publish_times: { instagram: ["12:00", "09:00"] }, lead_time_min: 60 })).toEqual([{ time: "09:00", minute: 8 * 60 }]);
+  });
+  it("rodada vigente = última cujo horário já passou", () => {
+    const slots = [{ time: "08:00", minute: 360 }, { time: "17:00", minute: 900 }];
+    expect(dueSlot(slots, 359)).toBeNull();
+    expect(dueSlot(slots, 360)?.index).toBe(0);
+    expect(dueSlot(slots, 899)?.index).toBe(0);
+    expect(dueSlot(slots, 1439)?.slot.time).toBe("17:00");
+  });
+  it("vagas acumuladas: 2/dia em 2 rodadas = 1 e depois 2; nunca passa do total", () => {
+    expect([0, 1].map((i) => cumulativeQuota(2, 2, i))).toEqual([1, 2]);
+    expect([0, 1].map((i) => cumulativeQuota(3, 2, i))).toEqual([2, 3]);
+    expect([0, 1, 2].map((i) => cumulativeQuota(1, 3, i))).toEqual([1, 1, 1]);
+    expect(cumulativeQuota(2, 2, 5)).toBe(2);
   });
   it("relógio local no fuso da marca", () => {
     expect(localClock(new Date("2026-11-09T09:30:00Z"), "America/Sao_Paulo")).toEqual({ date: "2026-11-09", minutes: 6 * 60 + 30 });
