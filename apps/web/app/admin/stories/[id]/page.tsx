@@ -356,8 +356,11 @@ function ChannelCreatives({ channel, lang, assets, c, publish, liPublish }: {
 }
 
 /** Pacote para download (§4.10 modo manual): imagens + legendas prontas, por rede e idioma. */
-/** Estados em que o editor ainda pode pedir (ou trocar) a imagem de fundo por IA. */
-const BACKGROUND_STATUSES = ["AWAITING_REVIEW", "APPROVED", "SCHEDULED"];
+/**
+ * Estados em que o editor ainda pode pedir (ou trocar) a imagem de fundo por IA.
+ * Inclui publicadas: Instagram e LinkedIn são postados depois do blog (migração 20261124000003).
+ */
+const BACKGROUND_STATUSES = ["AWAITING_REVIEW", "APPROVED", "SCHEDULED", "PUBLISHED", "PARTIAL"];
 
 function Creatives({ assets, find, publish, liPublish, bg }: {
   assets: AssetRow[]; find: (channel: string, lang: string) => ContentRow | undefined; publish: PublishProps; liPublish: LinkedinProps | null;
