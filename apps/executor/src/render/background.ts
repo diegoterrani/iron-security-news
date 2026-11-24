@@ -150,11 +150,13 @@ export async function generateImage(ai: NonNullable<BackgroundDeps["workersAi"]>
 const toDataUri = (buf: Buffer, mime: string) => `data:${mime};base64,${buf.toString("base64")}`;
 
 /**
- * Fundo da story como data URI: reaproveita o já gerado (edições não custam nova imagem); senão gera,
- * guarda no Storage e registra em `assets`. Qualquer falha devolve null e o criativo sai com fundo liso.
+ * Fundo da story como data URI: reaproveita o já gerado (edições não custam nova imagem). Só GERA um novo
+ * quando `generate` (pedido do editor no painel); aí guarda no Storage e registra em `assets`.
+ * Sem fundo pronto e sem pedido, ou em qualquer falha, devolve null e o criativo sai com fundo liso.
  */
 export async function storyBackground(
   deps: BackgroundDeps, storyId: string, story: { title: string; tldr: string; category: string },
+  opts: { generate?: boolean } = {},
 ): Promise<string | null> {
   const { pool, log } = deps;
   try {
@@ -167,7 +169,7 @@ export async function storyBackground(
       const res = await fetch(existing.public_url, { signal: AbortSignal.timeout(20_000) });
       if (res.ok) return toDataUri(Buffer.from(await res.arrayBuffer()), existing.mime || "image/jpeg");
     }
-    if (!deps.llm || !deps.workersAi) return null;
+    if (!opts.generate || !deps.llm || !deps.workersAi) return null;
     const { prompt, theme, subject } = await imagePrompt(deps.llm, pool, storyId, story);
     const jpg = await generateImage(deps.workersAi, prompt);
     const hash = createHash("sha256").update(jpg).digest("hex").slice(0, 10);
