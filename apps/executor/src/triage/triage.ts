@@ -52,6 +52,7 @@ export function coerceTriage(raw: unknown): unknown {
   t.one_line = cut(t.one_line, 200);
   t.discard_reason = cut(t.discard_reason, 120);
   if (typeof t.relevance === "number") t.relevance = Math.min(1, Math.max(0, t.relevance));
+  if (typeof t.br_impact === "number") t.br_impact = Math.min(1, Math.max(0, t.br_impact));
   const e = t.entities;
   if (e && typeof e === "object") {
     const en = { ...(e as Record<string, unknown>) };
@@ -128,9 +129,11 @@ export async function applyTriage(pool: Pool, itemId: string, outcome: TriageOut
         set category = case when $2 >= c.relevance_max or c.category is null then $3 else c.category end,
             relevance_max = greatest(c.relevance_max, $2),
             flags = c.flags || $4::jsonb,
-            cve_ids = array(select distinct unnest(c.cve_ids || $5::text[]) order by 1)
+            cve_ids = array(select distinct unnest(c.cve_ids || $5::text[]) order by 1),
+            br_impact_max = greatest(c.br_impact_max, $6),
+            severity_weight = greatest(c.severity_weight, severity_weight($7::severity))
       where c.id = $1`,
-    [clusterId, t.relevance, t.category, JSON.stringify(flags), t.entities.cves],
+    [clusterId, t.relevance, t.category, JSON.stringify(flags), t.entities.cves, t.br_impact, t.severity],
   );
   await pool.query("update clusters c set top_score = cluster_score(c) where c.id = $1", [clusterId]);
 }

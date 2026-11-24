@@ -9,6 +9,8 @@ export const TriageSchema = z.object({
   category: z.enum(CATEGORIES),
   severity: z.enum(SEVERITIES),
   relevance: z.number().min(0).max(1),
+  /** triage@2: importância para empresas, governo e usuários no Brasil (0–1). Corte da seleção automática. */
+  br_impact: z.number().min(0).max(1),
   flags: z.object({ zero_day: z.boolean(), exploited: z.boolean(), brazil: z.boolean() }),
   entities: z.object({
     cves: z.array(CVE).max(20),
