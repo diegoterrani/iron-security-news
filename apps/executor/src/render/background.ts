@@ -17,7 +17,18 @@ export interface BackgroundDeps {
   workersAi: { accountId: string; token: string; fetchImpl?: typeof fetch } | null;
 }
 
-const PromptSchema = z.object({ prompt: z.string().min(20).max(800) });
+/** image@4: o tema e o objeto vêm antes do prompt, para a cena partir do fato da notícia. */
+const PromptSchema = z.object({
+  theme: z.string().min(10).max(300),
+  subject: z.string().min(3).max(160),
+  prompt: z.string().min(20).max(800),
+});
+
+export interface ImagePrompt {
+  prompt: string;
+  theme: string;
+  subject: string;
+}
 const FLUX = "@cf/black-forest-labs/flux-1-schnell";
 
 const attr = (s: string) => s.replace(/["<>&]/g, " ").trim();
@@ -57,7 +68,7 @@ export function imagePromptInput(story: { title: string; tldr: string; category:
 export async function imagePrompt(
   llm: NonNullable<BackgroundDeps["llm"]>, pool: Pool, storyId: string,
   story: { title: string; tldr: string; category: string },
-): Promise<string> {
+): Promise<ImagePrompt> {
   // Sem histórico (falha de leitura), o prompt ainda sai; só perde a proteção contra repetição.
   const recent = await recentImagePrompts(pool, storyId).catch(() => [] as string[]);
   const msg = await llm.client.messages.create({
@@ -71,7 +82,8 @@ export async function imagePrompt(
   const text = msg.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "";
   const parsed = PromptSchema.safeParse(JSON.parse(text || "{}"));
   if (!parsed.success) throw new Error(`prompt de imagem inválido (${msg.stop_reason})`);
-  return fluxPrompt(parsed.data.prompt, story.category);
+  const { theme, subject, prompt } = parsed.data;
+  return { prompt: fluxPrompt(withSubject(prompt, subject), story.category), theme, subject };
 }
 
 const NEGATION = /\b(no|not|without|avoid|free of)\b/i;
@@ -95,6 +107,14 @@ const FALLBACK_SUBJECT: Record<string, string> = {
   supply_chain: "Wide night shot of stacked shipping containers at an empty port on the right",
 };
 const FALLBACK_DEFAULT = "Macro photograph of a brushed steel key resting on a dark stone surface on the right";
+
+/** Garante que a cena começa pelo objeto escolhido: se o prompt não o cita, o objeto entra na frente. */
+export function withSubject(prompt: string, subject: string): string {
+  const words = subject.toLowerCase().match(/[a-z]{4,}/g) ?? [];
+  const p = prompt.toLowerCase();
+  const cited = words.length > 0 && words.filter((w) => p.includes(w)).length >= Math.ceil(words.length / 2);
+  return cited ? prompt : `${subject.replace(/[.,;:]+$/, "")}, ${prompt}`;
+}
 
 /**
  * Prompt final do FLUX. O schnell não entende negação e desenha qualquer palavra ligada a escrita,
@@ -148,7 +168,7 @@ export async function storyBackground(
       if (res.ok) return toDataUri(Buffer.from(await res.arrayBuffer()), existing.mime || "image/jpeg");
     }
     if (!deps.llm || !deps.workersAi) return null;
-    const prompt = await imagePrompt(deps.llm, pool, storyId, story);
+    const { prompt, theme, subject } = await imagePrompt(deps.llm, pool, storyId, story);
     const jpg = await generateImage(deps.workersAi, prompt);
     const hash = createHash("sha256").update(jpg).digest("hex").slice(0, 10);
     const objectPath = `stories/${storyId}/background-${hash}.jpg`;
@@ -160,7 +180,7 @@ export async function storyBackground(
        on conflict (story_id, channel, lang, kind, position, content_version) do update
          set status = 'ready', storage_path = excluded.storage_path, public_url = excluded.public_url,
              bytes = excluded.bytes, meta = excluded.meta`,
-      [storyId, objectPath, url, jpg.length, JSON.stringify({ model: FLUX, prompt, prompt_version: IMAGE_PROMPT_VERSION })],
+      [storyId, objectPath, url, jpg.length, JSON.stringify({ model: FLUX, prompt, theme, subject, prompt_version: IMAGE_PROMPT_VERSION })],
     );
     log.info({ module: "render", storyId, bytes: jpg.length }, "background generated");
     return toDataUri(jpg, "image/jpeg");
