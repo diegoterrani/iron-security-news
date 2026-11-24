@@ -106,13 +106,45 @@ describe("fluxPrompt (FLUX não entende negação)", () => {
   });
 });
 
-describe("prompt de imagem variado (image@3)", () => {
+describe("prompt de imagem pelo tema central (image@4)", () => {
+  it("withSubject põe o objeto na frente quando o prompt não o cita", async () => {
+    const { withSubject } = await import("../src/render/background");
+    const subject = "a secret door ajar in a brick wall";
+    expect(withSubject("A secret door ajar in an old brick wall, cold light", subject)).toBe("A secret door ajar in an old brick wall, cold light");
+    expect(withSubject("Dark corridor with cold light.", `${subject}.`)).toBe("a secret door ajar in a brick wall, Dark corridor with cold light.");
+  });
+
+  it("imagePrompt devolve tema, objeto e prompt limpo para o FLUX", async () => {
+    const { imagePrompt, SUFFIX } = await import("../src/render/background");
+    const out = { theme: "backdoor escondido em plugins de sites WordPress", subject: "a secret door ajar in a brick wall",
+      prompt: "A secret door ajar in a brick wall on the right, cold low light, no text" };
+    let sentUser = "";
+    const llm = {
+      model: "m", prices: { m: { input: 1, output: 1 } },
+      client: { messages: { create: async (p: { messages: { content: string }[] }) => {
+        sentUser = p.messages[0]!.content;
+        return { model: "m", usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(out) }] };
+      } } },
+    } as never;
+    const pool = { query: async () => ({ rows: [] }) } as never;
+    const r = await imagePrompt(llm, pool, "s1", { title: "Plugins WordPress trazem backdoor", tldr: "Seis plugins…", category: "supply_chain" });
+    expect(r.theme).toBe(out.theme);
+    expect(r.subject).toBe(out.subject);
+    expect(r.prompt).toBe(`A secret door ajar in a brick wall on the right, cold low light. ${SUFFIX}`);
+    expect(sentUser).toContain("Título: Plugins WordPress trazem backdoor");
+  });
+});
+
+describe("prompt de imagem variado (image@3+)", () => {
   it("instrução tira o rack como padrão e pede assunto da notícia e variedade", async () => {
     const { IMAGE_PROMPT_SYSTEM, IMAGE_PROMPT_VERSION } = await import("@ironnews/shared");
-    expect(IMAGE_PROMPT_VERSION).toBe("image@3");
-    expect(IMAGE_PROMPT_SYSTEM).toMatch(/SÓ quando a notícia for sobre data center/);
+    expect(IMAGE_PROMPT_VERSION).toBe("image@4");
+    expect(IMAGE_PROMPT_SYSTEM).toMatch(/TEMA CENTRAL/);
+    expect(IMAGE_PROMPT_SYSTEM).toMatch(/1\) theme[\s\S]*2\) subject[\s\S]*3\) prompt/);
+    expect(IMAGE_PROMPT_SYSTEM).toMatch(/só quando a notícia é sobre data center/);
     expect(IMAGE_PROMPT_SYSTEM).toMatch(/<recent>/);
-    expect(IMAGE_PROMPT_SYSTEM).not.toMatch(/ex\.: rack de servidores/);
+    // Sem lista de objetos prontos que o modelo copiava (rack no image@2, roteador no image@3).
+    expect(IMAGE_PROMPT_SYSTEM).not.toMatch(/rack de servidores,|wifi router|roteador doméstico/);
   });
 
   it("monta a entrada com a story e os prompts recentes, sem deixar fechar as tags", async () => {
