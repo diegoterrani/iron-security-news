@@ -89,8 +89,14 @@ export interface RenderDeps {
   background?: Pick<BackgroundDeps, "llm" | "workersAi">;
 }
 
-/** Renderiza, envia ao Storage e registra em `assets` todos os criativos da story. Idempotente. */
-export async function renderStoryCreatives(deps: RenderDeps, storyId: string): Promise<number> {
+/**
+ * Renderiza, envia ao Storage e registra em `assets` todos os criativos da story. Idempotente.
+ * O fundo por IA só é GERADO quando o editor pede (`generateBackground`); sem pedido, reaproveita
+ * um fundo já gerado ou sai com fundo liso (economia de LLM + FLUX nas stories que nem serão aprovadas).
+ */
+export async function renderStoryCreatives(
+  deps: RenderDeps, storyId: string, opts: { generateBackground?: boolean } = {},
+): Promise<number> {
   const { pool, log } = deps;
   const { rows: [story] } = await pool.query<StoryForRender & { status: string }>(
     "select id, status, severity::text as severity, category, cve_ids, slug_pt, slug_en from stories where id = $1",
@@ -104,7 +110,8 @@ export async function renderStoryCreatives(deps: RenderDeps, storyId: string): P
   const pt = contents.find((c) => c.channel === "blog" && c.lang === "pt") ?? contents.find((c) => c.channel === "blog");
   const bg = deps.background && pt?.title
     ? await storyBackground({ pool, log, storage: deps.storage, ...deps.background }, storyId,
-        { title: pt.title, tldr: String(pt.body.tldr ?? ""), category: story.category })
+        { title: pt.title, tldr: String(pt.body.tldr ?? ""), category: story.category },
+        { generate: opts.generateBackground === true })
     : null;
   const plan = planCreatives(story, contents, bg);
   let done = 0;

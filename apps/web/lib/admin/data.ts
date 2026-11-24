@@ -138,7 +138,7 @@ export function rpcErrorMessage(message: string): string {
 export interface AssetRow {
   channel: "blog" | "instagram" | "linkedin" | "youtube" | "facebook";
   lang: Lang;
-  kind: "cover" | "carousel_slide" | "card" | "thumbnail" | "video";
+  kind: "cover" | "carousel_slide" | "card" | "thumbnail" | "video" | "background";
   position: number;
   content_version: number;
   public_url: string | null;

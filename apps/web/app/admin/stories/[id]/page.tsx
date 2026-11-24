@@ -7,6 +7,7 @@ import { socialPostParts, socialPostText, type SocialChannel } from "@ironnews/s
 import { SeverityBadge } from "@/components/SeverityBadge";
 import { canEdit, getAssets, getInstagramPublish, getLinkedinPublish, getStory, getViewer, type AssetRow, type ContentRow, type InstagramPublishState, type LinkedinPublishState } from "@/lib/admin/data";
 import { CATEGORY_LABEL, CHANNEL_LABEL, SEVERITY_LABEL, STATUS_LABEL, fmtDateTime } from "@/lib/admin/labels";
+import { BackgroundButton } from "./BackgroundButton";
 import { CopyButton } from "./CopyButton";
 import { PublishInstagramButton } from "./PublishInstagram";
 import { PublishLinkedinButton } from "./PublishLinkedin";
@@ -78,7 +79,10 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
 
   let body: React.ReactNode = null;
   if (tab === "criativos") {
-    body = <Creatives assets={assets} find={find} publish={publish!} liPublish={liPublish} />;
+    const bg = canEdit(viewer) && BACKGROUND_STATUSES.includes(story.status)
+      ? { storyId: story.id, hasBackground: assets.some((a) => a.kind === "background") }
+      : null;
+    body = <Creatives assets={assets} find={find} publish={publish!} liPublish={liPublish} bg={bg} />;
   } else if (tab === "pt" || tab === "en") {
     const a = find("blog", tab);
     body = !a ? <p className="section-hint">Sem artigo neste idioma.</p> : (
@@ -352,14 +356,19 @@ function ChannelCreatives({ channel, lang, assets, c, publish, liPublish }: {
 }
 
 /** Pacote para download (§4.10 modo manual): imagens + legendas prontas, por rede e idioma. */
-function Creatives({ assets, find, publish, liPublish }: {
+/** Estados em que o editor ainda pode pedir (ou trocar) a imagem de fundo por IA. */
+const BACKGROUND_STATUSES = ["AWAITING_REVIEW", "APPROVED", "SCHEDULED"];
+
+function Creatives({ assets, find, publish, liPublish, bg }: {
   assets: AssetRow[]; find: (channel: string, lang: string) => ContentRow | undefined; publish: PublishProps; liPublish: LinkedinProps | null;
+  bg: { storyId: string; hasBackground: boolean } | null;
 }) {
   if (assets.length === 0) {
     return <p className="section-hint">Os criativos ainda não foram gerados. Eles saem em até 1 minuto depois que a story fica pronta ou um texto é editado.</p>;
   }
   return (
     <div className="stack">
+      {bg && <BackgroundButton storyId={bg.storyId} hasBackground={bg.hasBackground} />}
       {(["pt", "en"] as const).map((lang) => {
         const of = (channel: string, kind: string) => assets.filter((a) => a.lang === lang && a.channel === channel && a.kind === kind);
         const ig = of("instagram", "carousel_slide");
