@@ -167,6 +167,23 @@ export interface InstagramPublishState {
   post: { status: "pending" | "publishing" | "published" | "failed" | "skipped"; last_error: string | null; external_url: string | null; published_at: string | null } | null;
 }
 
+export interface WhatsappPublishState {
+  /** Artigo PT publicado no blog: sem ele o link da mensagem não abre e o envio fica bloqueado. */
+  blogPublished: boolean;
+  post: { status: "pending" | "sending" | "sent" | "failed"; last_error: string | null; sent_at: string | null } | null;
+}
+
+/** Estado do envio da story PT ao grupo do WhatsApp (número admin do OpenClaw). */
+export async function getWhatsappPublish(storyId: string): Promise<WhatsappPublishState> {
+  const supabase = await createClient();
+  const [blog, post] = await Promise.all([
+    supabase.from("channel_posts").select("status").eq("story_id", storyId).eq("channel", "blog").eq("lang", "pt")
+      .eq("status", "published").maybeSingle(),
+    supabase.from("whatsapp_posts").select("status, last_error, sent_at").eq("story_id", storyId).eq("lang", "pt").maybeSingle(),
+  ]);
+  return { blogPublished: Boolean(blog.data), post: (post.data as WhatsappPublishState["post"]) ?? null };
+}
+
 /** Estado da publicação do carrossel PT no Instagram para a aba Criativos. */
 export async function getInstagramPublish(storyId: string): Promise<InstagramPublishState> {
   const supabase = await createClient();

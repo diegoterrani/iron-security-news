@@ -80,6 +80,14 @@ export async function publishLinkedin(_prev: ActionState, form: FormData): Promi
   return r.ok ? { ok: true, message: "Publicação pedida. O executor publica em até 1 minuto; recarregue para ver o link." } : r;
 }
 
+/** Pede o envio ao grupo do WhatsApp. Admin + MFA, blog publicado, capa pronta e teto diário: checado no banco. */
+export async function publishWhatsapp(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const id = Uuid.safeParse(form.get("story_id"));
+  if (!id.success) return { ok: false, message: "Story inválida." };
+  const r = await call("review_publish_whatsapp", { p_story: id.data, p_lang: "pt" }, id.data);
+  return r.ok ? { ok: true, message: "Envio pedido. A mensagem sai no grupo em até 1 minuto; recarregue para ver o resultado." } : r;
+}
+
 /** Pede a ilustração de fundo por IA para os criativos. Editor + MFA + estado + teto diário: checado no banco. */
 export async function requestBackground(_prev: ActionState, form: FormData): Promise<ActionState> {
   const id = Uuid.safeParse(form.get("story_id"));
