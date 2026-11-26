@@ -5,12 +5,13 @@ import Markdown from "react-markdown";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Download, ExternalLink } from "lucide-react";
 import { socialPostParts, socialPostText, type SocialChannel } from "@ironnews/shared";
 import { SeverityBadge } from "@/components/SeverityBadge";
-import { canEdit, getAssets, getInstagramPublish, getLinkedinPublish, getStory, getViewer, type AssetRow, type ContentRow, type InstagramPublishState, type LinkedinPublishState } from "@/lib/admin/data";
+import { canEdit, getAssets, getInstagramPublish, getLinkedinPublish, getStory, getViewer, getWhatsappPublish, type AssetRow, type ContentRow, type InstagramPublishState, type LinkedinPublishState, type WhatsappPublishState } from "@/lib/admin/data";
 import { CATEGORY_LABEL, CHANNEL_LABEL, SEVERITY_LABEL, STATUS_LABEL, fmtDateTime } from "@/lib/admin/labels";
 import { BackgroundButton } from "./BackgroundButton";
 import { CopyButton } from "./CopyButton";
 import { PublishInstagramButton } from "./PublishInstagram";
 import { PublishLinkedinButton } from "./PublishLinkedin";
+import { PublishWhatsappButton } from "./PublishWhatsapp";
 import { EditForm, ReviewActions } from "./ReviewForms";
 
 export const metadata: Metadata = { title: "Story" };
@@ -66,23 +67,25 @@ export default async function StoryPage({ params, searchParams }: { params: Prom
 
   // Criativos: aparecem na aba da própria rede (e a capa nas abas de artigo); "Criativos" reúne tudo.
   const needsAssets = tab !== "fontes" && tab !== "fatos";
-  const [assets, igPublish, liState] = needsAssets
+  const [assets, igPublish, liState, waState] = needsAssets
     ? await Promise.all([
       getAssets(story.id),
       tab === "criativos" || tab === "instagram" ? getInstagramPublish(story.id) : null,
       tab === "criativos" || tab === "linkedin" ? getLinkedinPublish(story.id) : null,
+      tab === "criativos" ? getWhatsappPublish(story.id) : null,
     ])
-    : [[] as AssetRow[], null, null];
+    : [[] as AssetRow[], null, null, null];
   const gate = { storyId: story.id, isAdmin: viewer?.role === "admin", approved: APPROVED_STATUSES.includes(story.status) };
   const publish: PublishProps | null = igPublish ? { ...gate, ...igPublish } : null;
   const liPublish: LinkedinProps | null = liState ? { ...gate, state: liState } : null;
+  const waPublish: WhatsappProps | null = waState ? { storyId: story.id, isAdmin: gate.isAdmin, ...waState } : null;
 
   let body: React.ReactNode = null;
   if (tab === "criativos") {
     const bg = canEdit(viewer) && BACKGROUND_STATUSES.includes(story.status)
       ? { storyId: story.id, hasBackground: assets.some((a) => a.kind === "background") }
       : null;
-    body = <Creatives assets={assets} find={find} publish={publish!} liPublish={liPublish} bg={bg} />;
+    body = <Creatives assets={assets} find={find} publish={publish!} liPublish={liPublish} waPublish={waPublish} bg={bg} />;
   } else if (tab === "pt" || tab === "en") {
     const a = find("blog", tab);
     body = !a ? <p className="section-hint">Sem artigo neste idioma.</p> : (
@@ -277,6 +280,33 @@ function LinkedinPublish({ p }: { p: LinkedinProps }) {
   );
 }
 
+type WhatsappProps = WhatsappPublishState & { storyId: string; isAdmin: boolean };
+
+/** Envio da story PT ao grupo do WhatsApp: capa do blog + título + TL;DR + link do artigo. */
+function WhatsappPublish({ p }: { p: WhatsappProps }) {
+  const post = p.post;
+  if (post?.status === "sent") {
+    return (
+      <p className="alert alert--ok" role="status">
+        <CheckCircle2 className="icon" size={14} aria-hidden="true" /> Enviado ao grupo do WhatsApp{post.sent_at ? ` em ${fmtDateTime(post.sent_at)}` : ""}.
+      </p>
+    );
+  }
+  if (post && (post.status === "pending" || post.status === "sending")) {
+    return <p className="section-hint" role="status">Enviando ao grupo do WhatsApp… sai em até 1 minuto. Recarregue para ver o resultado.</p>;
+  }
+  let action: React.ReactNode;
+  if (!p.isAdmin) action = <p className="section-hint">Só administradores enviam ao grupo do WhatsApp.</p>;
+  else if (!p.blogPublished) action = <p className="section-hint">Publique o artigo no blog para liberar o envio ao WhatsApp (a mensagem leva o link).</p>;
+  else action = <PublishWhatsappButton storyId={p.storyId} retry={Boolean(post)} />;
+  return (
+    <div className="stack">
+      {post?.status === "failed" && <p className="alert alert--warn" role="alert"><AlertTriangle className="icon" size={14} aria-hidden="true" /> WhatsApp falhou: {post.last_error}</p>}
+      {action}
+    </div>
+  );
+}
+
 const fileName = (a: AssetRow) => `iron-${a.channel}-${a.lang}-${a.kind}-${a.position}.png`;
 
 function Thumb({ a, width }: { a: AssetRow; width: number }) {
@@ -362,8 +392,9 @@ function ChannelCreatives({ channel, lang, assets, c, publish, liPublish }: {
  */
 const BACKGROUND_STATUSES = ["AWAITING_REVIEW", "APPROVED", "SCHEDULED", "PUBLISHED", "PARTIAL"];
 
-function Creatives({ assets, find, publish, liPublish, bg }: {
+function Creatives({ assets, find, publish, liPublish, waPublish, bg }: {
   assets: AssetRow[]; find: (channel: string, lang: string) => ContentRow | undefined; publish: PublishProps; liPublish: LinkedinProps | null;
+  waPublish: WhatsappProps | null;
   bg: { storyId: string; hasBackground: boolean } | null;
 }) {
   if (assets.length === 0) {
@@ -406,7 +437,13 @@ function Creatives({ assets, find, publish, liPublish, bg }: {
               </div>
             )}
             <div className="creative-row">
-              {of("blog", "cover").map((a) => <div key="cover" className="creative-group"><h3 className="section-title">Capa do blog / compartilhamento</h3><Thumb a={a} width={360} /></div>)}
+              {of("blog", "cover").map((a) => (
+                <div key="cover" className="creative-group">
+                  <h3 className="section-title">Capa do blog / compartilhamento</h3>
+                  <Thumb a={a} width={360} />
+                  {lang === "pt" && waPublish && <WhatsappPublish p={waPublish} />}
+                </div>
+              ))}
               {of("youtube", "thumbnail").map((a) => <div key="yt" className="creative-group"><h3 className="section-title">Capa do Short</h3><Thumb a={a} width={150} /></div>)}
             </div>
           </section>
