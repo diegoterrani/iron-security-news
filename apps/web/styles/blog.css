@@ -263,7 +263,9 @@ ul, ol { padding: 0; list-style: none; }
 /* ---------- 8. Artigo ---------- */
 .article-page { max-width: calc(820px + 2 * var(--gutter)); margin: 0 auto; padding: var(--space-6) var(--gutter) var(--space-8); }
 .back-link { min-height: 44px; }
-.article { display: grid; gap: var(--space-4); margin-top: var(--space-3); }
+/* minmax(0, 1fr): sem isso a coluna do grid cresce até a palavra mais longa (ex.: URL de fonte com
+   200 caracteres) e o texto vaza para fora da tela. */
+.article { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); margin-top: var(--space-3); }
 .article__head { display: grid; gap: 22px; padding-bottom: var(--space-4); border-bottom: 1px solid var(--line); }
 .article__title { font-size: clamp(36px, 4.1vw, 61px); font-weight: 600; line-height: 1.06; letter-spacing: -.05em; text-wrap: balance; }
 .article__alt { margin-left: auto; min-height: 44px; }
@@ -277,7 +279,7 @@ ul, ol { padding: 0; list-style: none; }
   display: block; margin-bottom: 6px; color: var(--accent-text);
   font: 600 12px/1.5 var(--font-mono); letter-spacing: .15em; text-transform: uppercase;
 }
-.prose { color: var(--text); font-size: 17px; line-height: 1.8; }
+.prose { color: var(--text); font-size: 17px; line-height: 1.8; overflow-wrap: anywhere; }
 .prose > * + * { margin-top: 18px; }
 .prose h2 { margin-top: var(--space-5); font-size: 28px; font-weight: 600; line-height: 1.2; letter-spacing: -.035em; }
 .prose h3 { margin-top: var(--space-4); font-size: 20px; font-weight: 700; line-height: 1.35; letter-spacing: -.025em; }

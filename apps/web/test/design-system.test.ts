@@ -46,6 +46,11 @@ describe("CSS público (styles/blog.css)", () => {
     for (const f of shorthands) expect(f).toMatch(/var\(--font-(sans|mono)\)$/);
   });
 
+  it("artigo não vaza da tela com URL ou palavra longa", () => {
+    expect(css).toMatch(/\.article \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
+    expect(css).toMatch(/\.prose \{[^}]*overflow-wrap: anywhere/);
+  });
+
   it("usa a curva única do sistema em transições com easing", () => {
     expect(css).toContain("--ease: cubic-bezier(.215, .61, .355, 1)");
     expect(css).not.toMatch(/ease-in|ease-out|linear\b/);
