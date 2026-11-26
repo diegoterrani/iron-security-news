@@ -79,6 +79,28 @@ export function brasiliaToIso(local: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+/**
+ * Tamanho que a legenda terá no LinkedIn depois do escape do "little text" e das #hashtags virarem
+ * {hashtag|\\#|Tag} (mesma regra de campaignCommentary no executor). A API aceita até 3.000.
+ */
+export function linkedinCaptionLength(text: string): number {
+  const RESERVED = /[\\|{}@[\]()<>#*_~]/g;
+  const escaped = (s: string) => s.length + (s.match(RESERVED)?.length ?? 0);
+  let total = 0;
+  let last = 0;
+  for (const m of text.matchAll(/#([\p{L}\p{N}]+)/gu)) {
+    const at = m.index ?? 0;
+    if (at > 0 && /[\p{L}\p{N}]/u.test(text[at - 1]!)) continue;
+    total += escaped(text.slice(last, at)) + `{hashtag|\\#|${m[1]}}`.length;
+    last = at + m[0].length;
+  }
+  return total + escaped(text.slice(last));
+}
+
+/** Tamanho efetivo da legenda no destino (LinkedIn conta o texto já escapado). */
+export const captionLength = (dest: Destination, text: string) =>
+  dest.channel === "linkedin" ? linkedinCaptionLength(text.trim()) : text.trim().length;
+
 export const POST_STATUS_LABEL = {
   pending: "Agendada", publishing: "Publicando", published: "Publicada", failed: "Falhou", skipped: "Cancelada",
 } as const;

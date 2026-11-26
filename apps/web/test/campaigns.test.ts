@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  DESTINATIONS, MEDIA_PATH_RE, brasiliaToIso, checkFiles, destinationLabel, isDestinationKey, storageName,
+  DESTINATIONS, captionLength, linkedinCaptionLength, MEDIA_PATH_RE, brasiliaToIso, checkFiles, destinationLabel, isDestinationKey, storageName,
 } from "../lib/admin/campaigns";
 
 const MB = 1024 * 1024;
@@ -35,5 +35,19 @@ describe("campanhas: horário e rótulos", () => {
     expect(isDestinationKey("li_org_document")).toBe(true);
     expect(isDestinationKey("constructor")).toBe(false);
     expect(destinationLabel("linkedin", "organization", "document")).toBe("LinkedIn página IRON · Carrossel PDF");
+  });
+});
+
+describe("campanhas: tamanho da legenda no LinkedIn", () => {
+  it("conta o escape e o template de hashtag, igual ao executor", () => {
+    // Executor: "Agende \\(7 dias\\): iron.com/a\\_b\n\n{hashtag|\\#|Cibersegurança} {hashtag|\\#|CISO}"
+    const expected = "Agende \\(7 dias\\): iron.com/a\\_b\n\n{hashtag|\\#|Cibersegurança} {hashtag|\\#|CISO}".length;
+    expect(linkedinCaptionLength("Agende (7 dias): iron.com/a_b\n\n#Cibersegurança #CISO")).toBe(expected);
+    expect(linkedinCaptionLength("C#")).toBe(3);
+  });
+  it("3.000 caracteres crus com hashtags passam do limite no LinkedIn, mas não no Instagram", () => {
+    const text = `${"a".repeat(2990)} #CISO`;
+    expect(captionLength(DESTINATIONS.li_member_video, text)).toBeGreaterThan(3000);
+    expect(captionLength(DESTINATIONS.ig_reel, text)).toBe(2996);
   });
 });

@@ -2,7 +2,7 @@
 import { useMemo, useRef, useState } from "react";
 import { CalendarClock, Send, Upload } from "lucide-react";
 import {
-  DESTINATIONS, DESTINATION_KEYS, checkFiles, storageName, type DestinationKey,
+  DESTINATIONS, DESTINATION_KEYS, captionLength, checkFiles, storageName, type DestinationKey,
 } from "@/lib/admin/campaigns";
 import { createClient } from "@/lib/supabase/client";
 import { createCampaignPost, type CampaignActionState } from "./actions";
@@ -30,6 +30,7 @@ export function CampaignForm({ available }: { available: Record<DestinationKey, 
     const form = new FormData(e.currentTarget);
     const err = checkFiles(dest, files);
     if (err) return setState({ ok: false, message: err });
+    if (captionLength(dest, caption) > dest.captionMax) return setState({ ok: false, message: `Legenda acima de ${dest.captionMax} caracteres.` });
     const when = now ? "" : String(form.get("when") ?? "");
     if (!now && !when) return setState({ ok: false, message: "Escolha a data e a hora." });
     const where = now ? "agora" : `em ${when.replace("T", " às ")} (Brasília)`;
@@ -103,7 +104,7 @@ export function CampaignForm({ available }: { available: Record<DestinationKey, 
         </>
       )}
 
-      <label className="form__label" htmlFor="c-caption">Legenda · {caption.length}/{dest.captionMax}</label>
+      <label className="form__label" htmlFor="c-caption">Legenda · {captionLength(dest, caption)}/{dest.captionMax}{dest.channel === "linkedin" ? " (hashtags e símbolos contam a mais)" : ""}</label>
       <textarea id="c-caption" name="caption" className="input textarea" rows={10} required maxLength={dest.captionMax}
         value={caption} onChange={(e) => setCaption(e.target.value)}
         placeholder={dest.channel === "linkedin" ? "Texto do post. #Hashtags continuam clicáveis." : "Legenda do post, com as #hashtags no fim."} />

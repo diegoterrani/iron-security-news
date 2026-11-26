@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getViewer, rpcErrorMessage } from "@/lib/admin/data";
-import { DESTINATIONS, MEDIA_PATH_RE, brasiliaToIso, extOf, isDestinationKey } from "@/lib/admin/campaigns";
+import { DESTINATIONS, MEDIA_PATH_RE, brasiliaToIso, captionLength, extOf, isDestinationKey } from "@/lib/admin/campaigns";
 import { createClient } from "@/lib/supabase/server";
 
 export type CampaignActionState = { ok?: boolean; message?: string };
@@ -30,7 +30,11 @@ export async function createCampaignPost(raw: unknown): Promise<CampaignActionSt
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   const d = parsed.data;
   const dest = DESTINATIONS[d.destination as keyof typeof DESTINATIONS];
-  if (d.caption.length > dest.captionMax) return { ok: false, message: `Legenda com até ${dest.captionMax} caracteres.` };
+  // No LinkedIn conta o texto já escapado (cada #hashtag e símbolo reservado ocupa mais), senão a
+  // publicação agendada falharia na hora marcada.
+  if (captionLength(dest, d.caption) > dest.captionMax) {
+    return { ok: false, message: `Legenda com até ${dest.captionMax} caracteres${dest.channel === "linkedin" ? " no LinkedIn (hashtags e símbolos contam a mais)" : ""}.` };
+  }
   if (d.media.some((m) => !dest.exts.includes(extOf(m)))) return { ok: false, message: "Arquivo não serve para este destino." };
   if (dest.needsTitle && !d.doc_title) return { ok: false, message: "Dê um título ao documento." };
   let when: string | null = null;
