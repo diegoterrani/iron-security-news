@@ -113,6 +113,10 @@ describe("campaignCommentary (little text)", () => {
   it("# grudado numa palavra não vira hashtag", () => {
     expect(campaignCommentary("C#")).toBe("C\\#");
   });
+  it("número sozinho não vira hashtag (o LinkedIn mostraria o template cru)", () => {
+    expect(campaignCommentary("Plantão Cyber #3 · 27/11 #CVE2026"))
+      .toBe("Plantão Cyber \\#3 · 27/11 {hashtag|\\#|CVE2026}");
+  });
 });
 
 describe("publishReel (Instagram)", () => {
