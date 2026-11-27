@@ -148,6 +148,10 @@ describe("caminhos e PNG", () => {
   it("só aceita arquivos dentro de campanhas/<uuid>/", () => {
     expect(MEDIA_PATH_RE.test("campanhas/0b6f4c1e-1111-4a2b-9c3d-123456789abc/01-video.mp4")).toBe(true);
     expect(MEDIA_PATH_RE.test("campanhas/../segredo.mp4")).toBe(false);
+    // Prefixo da automação (agendamento diário do Plantão Cyber, /api/automation/v1/uploads).
+    expect(MEDIA_PATH_RE.test("campanhas/auto/0b6f4c1e-1111-4a2b-9c3d-123456789abc/video.mp4")).toBe(true);
+    expect(MEDIA_PATH_RE.test("campanhas/auto/../0b6f4c1e-1111-4a2b-9c3d-123456789abc/video.mp4")).toBe(false);
+    expect(MEDIA_PATH_RE.test("campanhas/outro/0b6f4c1e-1111-4a2b-9c3d-123456789abc/video.mp4")).toBe(false);
     expect(MEDIA_PATH_RE.test("stories/0b6f4c1e-1111-4a2b-9c3d-123456789abc/a.mp4")).toBe(false);
     expect(MEDIA_PATH_RE.test("campanhas/0b6f4c1e-1111-4a2b-9c3d-123456789abc/a.exe")).toBe(false);
   });

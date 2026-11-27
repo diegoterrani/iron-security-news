@@ -54,7 +54,7 @@ interface Published {
 /** Vídeo pode levar até ~10 min entre upload e processamento; acima disso o post é dado como interrompido. */
 const STUCK_MINUTES = 30;
 const MAX_RATE_LIMIT_RETRIES = 3;
-export const MEDIA_PATH_RE = /^campanhas\/[0-9a-f-]{36}\/[A-Za-z0-9._-]{1,100}\.(mp4|jpg|jpeg|png|pdf)$/;
+export const MEDIA_PATH_RE = /^campanhas\/(?:auto\/)?[0-9a-f-]{36}\/[A-Za-z0-9._-]{1,100}\.(mp4|jpg|jpeg|png|pdf)$/;
 const MAX_DOWNLOAD = 500 * 1024 * 1024;
 const NETWORK: Record<CampaignPost["channel"], string> = { instagram: "Instagram", linkedin: "LinkedIn" };
 
