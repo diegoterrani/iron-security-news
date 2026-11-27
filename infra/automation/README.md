@@ -1,4 +1,4 @@
-# Automação: vídeo no perfil do LinkedIn
+# Automação: vídeo no perfil do LinkedIn e texto no grupo do WhatsApp
 
 Permite que o agendamento diário do **Plantão Cyber 18h** (que roda na nuvem, sem navegador e sem MFA) agende o
 episódio do dia no **perfil** do LinkedIn pela mesma fila da tela **Campanhas** (`campaign_posts`). O executor
@@ -71,3 +71,53 @@ Acompanhar e cancelar: tela **Campanhas** do painel.
 
 Desfazer: `AUTOMATION_API_ENABLED=false` + redeploy. Posts já agendados ficam na tela Campanhas e podem ser
 cancelados lá. A migration só acrescenta uma coluna opcional, um índice e uma função; não altera dados.
+
+---
+
+# Texto no grupo do WhatsApp
+
+O mesmo agendamento enfileira, com o mesmo OK diário, **uma mensagem de texto** (manchetes + link do episódio no
+YouTube + convite) para o grupo do WhatsApp, marcada para as 18h. Quem envia é o relay que já existe na VPS
+(`infra/vps/whatsapp-relay.sh`, timer de 30 s, gateway do OpenClaw), para o grupo de `WA_GROUP_JID` em
+`/etc/ironnews/whatsapp-relay.env`. O cliente não escolhe o grupo nem manda imagem.
+
+## Escopo
+
+- Só **texto**, de 1 a **1.500** caracteres. Sem imagem: o WhatsApp monta a prévia do link do YouTube.
+- Horário (`send_after`) entre agora e **7 dias**; o relay só pega o pedido quando o horário chega.
+- Teto de **10 envios em 24 h**, somado com os pedidos do painel (o número é pessoal).
+- A mesma `dedupe_key` nunca enfileira duas vezes (reenvio devolve `duplicate: true`).
+- Se esses segredos vazarem, o pior caso é alguém mandar até 10 textos por dia no grupo. Corte igual ao do LinkedIn.
+
+## Rota
+
+| Rota | Faz |
+|---|---|
+| `POST /api/automation/v1/whatsapp-group` | Corpo `{ body, send_after, dedupe_key }`. Chama a RPC `automation_whatsapp_group_create`. |
+
+Mesmos cabeçalhos e segredos da rota do LinkedIn. Cada chamada entra em `agent_audit_log`
+(`automation.whatsapp_group`, sem o texto) e o pedido em `audit_log` (`post.whatsapp_request`, `via = automation`).
+
+## Cliente
+
+```bash
+node infra/automation/agendar-whatsapp-grupo.mjs \
+  --mensagem whatsapp.txt \
+  --quando 2026-11-28T18:00:00-03:00 \
+  --chave plantao-2026-11-28-whatsapp
+# → {"id":"…","status":"pending","send_after":"…","duplicate":false}
+```
+
+Cancelar antes das 18h (SQL Editor do Supabase): `update whatsapp_posts set status = 'failed', last_error = 'cancelado'
+where dedupe_key = 'plantao-AAAA-MM-DD-whatsapp' and status = 'pending';`
+
+## Implantar e desfazer
+
+1. Merge.
+2. `bash /opt/ironnews/app/infra/vps/pipeline.sh` como root (aplica `20261127000002_whatsapp_automation.sql` e
+   atualiza o executor).
+3. Atualizar o relay instalado (o timer roda a cópia em `/usr/local/sbin`):
+   `install -o root -g root -m 755 /opt/ironnews/app/infra/vps/whatsapp-relay.sh /usr/local/sbin/ironnews-whatsapp-relay`
+
+Nada muda na Vercel (mesmas variáveis). Desfazer: `AUTOMATION_API_ENABLED=false` + redeploy. A migration só
+acrescenta colunas opcionais, checks, um índice e uma função; os pedidos do painel continuam iguais.

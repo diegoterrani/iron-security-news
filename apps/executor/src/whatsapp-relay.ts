@@ -1,6 +1,7 @@
 /**
  * Lado do banco do envio ao grupo do WhatsApp, chamado pelo infra/vps/whatsapp-relay.sh (na VPS):
- *   node dist/whatsapp-relay.js claim              → JSON {id, storyId, caption, mediaUrl} ou {} (fila vazia)
+ *   node dist/whatsapp-relay.js claim              → JSON {id, storyId, caption, mediaUrl} ou {} (fila vazia);
+ *                                                  mediaUrl null = só texto
  *   node dist/whatsapp-relay.js done <id> [msgId]  → marca enviado
  *   node dist/whatsapp-relay.js fail <id> <erro>   → marca falha (o painel mostra o motivo)
  */

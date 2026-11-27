@@ -36,7 +36,7 @@ export function parseArgs(argv) {
   return out;
 }
 
-async function call(base, token, secret, path, payload, fetchImpl) {
+export async function call(base, token, secret, path, payload, fetchImpl) {
   const body = JSON.stringify(payload);
   const ts = String(Date.now());
   const res = await fetchImpl(`${base}${path}`, {
@@ -75,7 +75,11 @@ export async function run(argv, env = process.env, fetchImpl = fetch) {
     body: await readFile(a.video),
     signal: AbortSignal.timeout(600_000),
   });
-  if (!put.ok) throw new Error(`upload do vídeo → HTTP ${put.status}`);
+  if (!put.ok) {
+    // O Storage explica o motivo no corpo (ex.: 413 EntityTooLarge); a URL assinada não vai para o erro.
+    const detail = (await put.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 200);
+    throw new Error(`upload do vídeo → HTTP ${put.status}${detail ? `: ${detail}` : ""}`);
+  }
 
   return call(base, token, secret, "/api/automation/v1/linkedin-video", {
     campaign: a.campanha,

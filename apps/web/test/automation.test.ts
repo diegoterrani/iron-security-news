@@ -7,6 +7,9 @@ import { automationConfigProblem } from "../lib/automation/auth";
 import { AUTOMATION_MEDIA_RE, linkedinVideoSchema, newAutomationMediaPath, rpcArgs } from "../lib/automation/linkedin-video";
 // @ts-expect-error script .mjs sem tipos (Node puro, roda fora do app)
 import { parseArgs, run, sign } from "../../../infra/automation/agendar-linkedin-video.mjs";
+// @ts-expect-error script .mjs sem tipos (Node puro, roda fora do app)
+import { parseArgs as waParseArgs, run as waRun } from "../../../infra/automation/agendar-whatsapp-grupo.mjs";
+import { whatsappGroupSchema, whatsappRpcArgs } from "../lib/automation/whatsapp-group";
 
 const TOKEN = "t".repeat(40);
 const SECRET = "s".repeat(48);
@@ -119,5 +122,71 @@ describe("script do cliente", () => {
       ["--video", join(dir, "v.mp4"), "--legenda", join(dir, "l.txt"), "--quando", "2026-11-28T18:00:00Z", "--chave", "plantao-x"],
       { AUTOMATION_TOKEN: TOKEN, AUTOMATION_HMAC_SECRET: SECRET }, fake,
     )).rejects.toThrow(/HTTP 401: Unauthorized/);
+  });
+});
+
+describe("texto no grupo do WhatsApp", () => {
+  const ok = { body: "  *Plantão Cyber nº 4*\n\nhttps://youtu.be/x  ", send_after: "2026-11-28T18:00:00-03:00", dedupe_key: "plantao-2026-11-28-whatsapp" };
+
+  it("aceita o pedido do Plantão e apara o texto", () => {
+    const r = whatsappGroupSchema.parse(ok);
+    expect(r.body).toBe("*Plantão Cyber nº 4*\n\nhttps://youtu.be/x");
+    expect(whatsappRpcArgs(ACTOR, r)).toEqual({ p_actor: ACTOR, p_body: r.body, p_send_after: ok.send_after, p_dedupe_key: ok.dedupe_key });
+  });
+
+  it("recusa texto vazio ou longo, horário sem fuso, chave inválida e campos extras (como outro grupo)", () => {
+    expect(whatsappGroupSchema.safeParse({ ...ok, body: "   " }).success).toBe(false);
+    expect(whatsappGroupSchema.safeParse({ ...ok, body: "x".repeat(1501) }).success).toBe(false);
+    expect(whatsappGroupSchema.safeParse({ ...ok, send_after: "2026-11-28 18:00" }).success).toBe(false);
+    expect(whatsappGroupSchema.safeParse({ ...ok, dedupe_key: "Plantão!" }).success).toBe(false);
+    expect(whatsappGroupSchema.safeParse({ ...ok, group: "123@g.us" }).success).toBe(false);
+    expect(whatsappGroupSchema.safeParse({ ...ok, media: "https://x/y.png" }).success).toBe(false);
+  });
+
+  it("o script exige mensagem, horário com fuso e chave", () => {
+    expect(() => waParseArgs(["--mensagem", "a.txt"])).toThrow(/quando/);
+    expect(() => waParseArgs(["--mensagem", "a", "--quando", "2026-11-28T18:00", "--chave", "k"])).toThrow(/fuso/);
+  });
+
+  it("o script envia o texto assinado à rota e recusa mensagem longa antes de chamar", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wa-"));
+    await writeFile(join(dir, "m.txt"), "  Manchetes do dia \n");
+    await writeFile(join(dir, "longa.txt"), "x".repeat(1501));
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fake = async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return Response.json({ ok: true, data: { id: UUID, status: "pending", duplicate: false } });
+    };
+    const envOk = { NEWS_AUTOMATION_URL: "https://news.example", AUTOMATION_TOKEN: TOKEN, AUTOMATION_HMAC_SECRET: SECRET };
+    const args = (f: string) => ["--mensagem", join(dir, f), "--quando", "2026-11-28T18:00:00-03:00", "--chave", "plantao-2026-11-28-whatsapp"];
+
+    expect((await waRun(args("m.txt"), envOk, fake)).status).toBe("pending");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://news.example/api/automation/v1/whatsapp-group");
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    const body = String(calls[0]!.init.body);
+    expect(verifySignature({ secret: SECRET, timestamp: headers["x-automation-timestamp"]!, signature: headers["x-automation-signature"]!, method: "POST", path: "/api/automation/v1/whatsapp-group", body, now: Number(headers["x-automation-timestamp"]) })).toBe(true);
+    expect(JSON.parse(body)).toEqual({ body: "Manchetes do dia", send_after: "2026-11-28T18:00:00-03:00", dedupe_key: "plantao-2026-11-28-whatsapp" });
+
+    await expect(waRun(args("longa.txt"), envOk, fake)).rejects.toThrow(/1501 caracteres/);
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("erro do upload do vídeo", () => {
+  it("mostra o motivo do Storage sem a URL assinada", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "auto-"));
+    await writeFile(join(dir, "v.mp4"), Buffer.alloc(10, 1));
+    await writeFile(join(dir, "l.txt"), "x");
+    const fake = async (url: string) => {
+      if (url.endsWith("/uploads")) return Response.json({ ok: true, data: { path: `campanhas/auto/${UUID}/video.mp4`, signed_url: "https://st.example/upload?token=segredo" } });
+      return new Response(JSON.stringify({ statusCode: "413", error: "Payload too large" }), { status: 400 });
+    };
+    const err = await run(
+      ["--video", join(dir, "v.mp4"), "--legenda", join(dir, "l.txt"), "--quando", "2026-11-28T18:00:00Z", "--chave", "plantao-x"],
+      { AUTOMATION_TOKEN: TOKEN, AUTOMATION_HMAC_SECRET: SECRET }, fake,
+    ).catch((e: Error) => e);
+    expect(String(err)).toMatch(/HTTP 400: .*Payload too large/);
+    expect(String(err)).not.toContain("segredo");
   });
 });
