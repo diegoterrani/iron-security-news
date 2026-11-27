@@ -122,6 +122,48 @@ export async function publishCarousel(deps: IgApiDeps, input: CarouselInput): Pr
   return { mediaId, permalink };
 }
 
+export interface ReelInput {
+  igUserId: string;
+  token: string;
+  videoUrl: string; // MP4 público (H.264 + AAC, 9:16)
+  caption: string;
+}
+
+/**
+ * Publica um Reels: contêiner REELS com video_url → espera FINISHED → media_publish.
+ * O Instagram baixa e processa o vídeo de forma assíncrona; vídeos de 1 minuto levam de 30 s a alguns minutos,
+ * então espera até ~6 min (o job tem `protect`, não se sobrepõe a si mesmo).
+ */
+export async function publishReel(deps: IgApiDeps, input: ReelInput): Promise<{ mediaId: string; permalink: string | null }> {
+  const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const creationId = idOf(
+    await call(deps, input.token, "POST", `${input.igUserId}/media`, {
+      media_type: "REELS", video_url: input.videoUrl, caption: input.caption, share_to_feed: "true",
+    }),
+    "reels",
+  );
+  let status = "";
+  for (let i = 0; i < 72; i++) {
+    await sleep(5000);
+    const s = await call(deps, input.token, "GET", creationId, { fields: "status_code,status" });
+    status = String(s.status_code ?? "");
+    if (status === "FINISHED") break;
+    if (status === "ERROR" || status === "EXPIRED") throw new IgApiError(`processamento do vídeo: ${scrub(String(s.status ?? status))}`, null, 200);
+  }
+  if (status !== "FINISHED") throw new IgApiError("o Instagram não terminou de processar o vídeo a tempo", null, 200);
+  const mediaId = idOf(await call(deps, input.token, "POST", `${input.igUserId}/media_publish`, { creation_id: creationId }), "publish");
+  return { mediaId, permalink: await permalinkOf(deps, input.token, mediaId) };
+}
+
+async function permalinkOf(deps: IgApiDeps, token: string, mediaId: string): Promise<string | null> {
+  try {
+    const m = await call(deps, token, "GET", mediaId, { fields: "permalink" });
+    return typeof m.permalink === "string" && m.permalink.startsWith("https://") ? m.permalink : null;
+  } catch {
+    return null; // Já publicado: sem permalink não é falha.
+  }
+}
+
 /** Renova o token longo por mais 60 dias (precisa ter mais de 24 h e ainda estar válido). */
 export async function refreshLongLivedToken(deps: Pick<IgApiDeps, "fetchImpl">, token: string): Promise<{ token: string; expiresIn: number }> {
   const url = new URL(`${BASE}/refresh_access_token`);

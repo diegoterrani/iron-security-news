@@ -15,6 +15,7 @@ import { consumeStoryBuild } from "./story/worker";
 import { publishDueBlogPosts, revalidate } from "./publish/blog";
 import { publishDueInstagramPosts, refreshInstagramTokens } from "./publish/instagram";
 import { publishDueLinkedinPosts, refreshLinkedinTokens } from "./publish/linkedin";
+import { publishDueCampaignPosts } from "./publish/campaign";
 import { consumeRender } from "./render/worker";
 import { processManualRequest } from "./manual/worker";
 
@@ -232,6 +233,20 @@ async function publishLinkedin() {
   }
 }
 
+/** Campanhas (/admin/campanhas): vídeos, carrosséis e PDFs subidos no painel, publicados na hora marcada. */
+async function publishCampaigns() {
+  if (!storage || !config.TOKEN_ENC_KEY || !state.dbOk) return;
+  try {
+    await publishDueCampaignPosts({
+      pool, log, storage, tokenKey: config.TOKEN_ENC_KEY, dryRun: config.PUBLISH_DRY_RUN,
+      ig: { graphVersion: config.INSTAGRAM_GRAPH_VERSION },
+      li: { apiVersion: config.LINKEDIN_API_VERSION },
+    });
+  } catch (err) {
+    log.error({ module: "publish", channel: "campaign", err: (err as Error).message }, "campaign publish failed");
+  }
+}
+
 async function refreshTokens() {
   if (!config.TOKEN_ENC_KEY || !state.dbOk) return;
   try {
@@ -277,6 +292,7 @@ const jobs = [
   new Cron("5,25,45 * * * * *", { protect: true, timezone: "UTC" }, renderWorker),
   new Cron("40 * * * * *", { protect: true, timezone: "UTC" }, publishInstagram),
   new Cron("55 * * * * *", { protect: true, timezone: "UTC" }, publishLinkedin),
+  new Cron("2 * * * * *", { protect: true, timezone: "UTC" }, publishCampaigns),
   new Cron("23 7 * * *", { protect: true, timezone: "UTC" }, refreshTokens),
 ];
 const heartbeatTimer = setInterval(() => void heartbeat(), config.HEARTBEAT_INTERVAL_SEC * 1000);
@@ -289,7 +305,7 @@ log.info(
     ingest: config.INGEST_ENABLED, embeddings: embed !== null,
     triage: aiEnabled, selection: aiEnabled && config.SELECTION_ENABLED, model: config.LLM_MODEL_DEFAULT, render: storage !== null,
     instagram: Boolean(storage && config.TOKEN_ENC_KEY),
-    linkedin: Boolean(storage && config.TOKEN_ENC_KEY), linkedinApiVersion: config.LINKEDIN_API_VERSION,
+    linkedin: Boolean(storage && config.TOKEN_ENC_KEY), campaigns: Boolean(storage && config.TOKEN_ENC_KEY), linkedinApiVersion: config.LINKEDIN_API_VERSION,
     backgrounds: Boolean(config.CF_ACCOUNT_ID && config.CF_AI_TOKEN && config.BACKGROUNDS_ENABLED),
   },
   "executor started",

@@ -41,10 +41,10 @@ const headers = (deps: LiApiDeps, token: string, json = true): Record<string, st
   ...(json ? { "Content-Type": "application/json" } : {}),
 });
 
-async function send(deps: LiApiDeps, url: string, init: RequestInit): Promise<Response> {
+async function send(deps: LiApiDeps, url: string, init: RequestInit, timeoutMs = TIMEOUT_MS): Promise<Response> {
   let res: Response;
   try {
-    res = await (deps.fetchImpl ?? fetch)(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    res = await (deps.fetchImpl ?? fetch)(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   } catch (err) {
     throw new LiApiError(`rede: ${scrub((err as Error).message)}`, 0);
   }
@@ -110,6 +110,29 @@ export interface PostInput {
 
 /** Cria o post público com a imagem. Devolve o URN do post e o link para abri-lo. */
 export async function createPost(deps: LiApiDeps, input: PostInput): Promise<{ postUrn: string; url: string }> {
+  return createMediaPost(deps, {
+    author: input.author, token: input.token, commentary: input.commentary,
+    media: { id: input.imageUrn, title: input.title, altText: input.altText },
+  });
+}
+
+/** URNs de mídia aceitos num post: imagem, vídeo ou documento (PDF). */
+export const MEDIA_URN_RE = /^urn:li:(image|video|document):[A-Za-z0-9_-]+$/;
+
+export interface MediaPostInput {
+  author: string;
+  token: string;
+  commentary: string;
+  media: { id: string; title?: string; altText?: string };
+}
+
+/** Post público com uma mídia (imagem, vídeo ou documento). O título é obrigatório para documento. */
+export async function createMediaPost(deps: LiApiDeps, input: MediaPostInput): Promise<{ postUrn: string; url: string }> {
+  if (!MEDIA_URN_RE.test(input.media.id)) throw new LiApiError("URN de mídia inválido", 0);
+  const media: Record<string, string> = { id: input.media.id };
+  if (input.media.title) media.title = input.media.title.slice(0, 200);
+  // altText só existe para imagem.
+  if (input.media.altText && input.media.id.startsWith("urn:li:image:")) media.altText = input.media.altText.slice(0, 300);
   const res = await send(deps, `${API}/posts`, {
     method: "POST",
     headers: headers(deps, input.token),
@@ -118,7 +141,7 @@ export async function createPost(deps: LiApiDeps, input: PostInput): Promise<{ p
       commentary: input.commentary,
       visibility: "PUBLIC",
       distribution: { feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: [] },
-      content: { media: { id: input.imageUrn, title: input.title.slice(0, 200), altText: input.altText.slice(0, 300) } },
+      content: { media },
       lifecycleState: "PUBLISHED",
       isReshareDisabledByAuthor: false,
     }),
@@ -126,6 +149,109 @@ export async function createPost(deps: LiApiDeps, input: PostInput): Promise<{ p
   const postUrn = res.headers.get("x-restli-id") ?? res.headers.get("x-linkedin-id") ?? "";
   if (!/^urn:li:(share|ugcPost):\d+$/.test(postUrn)) throw new LiApiError("post criado sem URN na resposta", res.status);
   return { postUrn, url: `https://www.linkedin.com/feed/update/${postUrn}/` };
+}
+
+/** Só aceita URL de upload HTTPS de um domínio do LinkedIn (nunca manda bytes ou token para outro host). */
+function linkedinUploadUrl(raw: unknown): URL {
+  let u: URL;
+  try {
+    u = new URL(String(raw ?? ""));
+  } catch {
+    throw new LiApiError("resposta sem uploadUrl", 200);
+  }
+  if (u.protocol !== "https:" || !(u.hostname === "linkedin.com" || u.hostname.endsWith(".linkedin.com"))) {
+    throw new LiApiError("uploadUrl fora do LinkedIn", 200);
+  }
+  return u;
+}
+
+/** Espera a mídia ficar AVAILABLE (o LinkedIn processa vídeo e documento de forma assíncrona). */
+async function waitAvailable(deps: LiApiDeps, token: string, kind: "videos" | "documents", urn: string, tries: number, everyMs: number) {
+  const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const what = kind === "videos" ? "o vídeo" : "o documento";
+  for (let i = 0; i < tries; i++) {
+    const r = await send(deps, `${API}/${kind}/${encodeURIComponent(urn)}`, { method: "GET", headers: headers(deps, token, false) });
+    const status = String(((await r.json()) as { status?: string }).status ?? "");
+    if (status === "AVAILABLE") return;
+    if (status === "PROCESSING_FAILED") throw new LiApiError(`o LinkedIn não conseguiu processar ${what}`, 200);
+    await sleep(everyMs);
+  }
+  throw new LiApiError(`o LinkedIn não terminou de processar ${what} a tempo`, 200);
+}
+
+/**
+ * Sobe um vídeo MP4 (Videos API): initializeUpload → PUT de cada parte na uploadUrl (URL pré-assinada,
+ * sem token) → finalizeUpload com os ETags → espera AVAILABLE (até ~10 min). Devolve urn:li:video:….
+ */
+export async function uploadVideo(deps: LiApiDeps, token: string, owner: string, bytes: Buffer): Promise<string> {
+  const init = await send(deps, `${API}/videos?action=initializeUpload`, {
+    method: "POST",
+    headers: headers(deps, token),
+    body: JSON.stringify({ initializeUploadRequest: { owner, fileSizeBytes: bytes.length, uploadCaptions: false, uploadThumbnail: false } }),
+  });
+  const value = ((await init.json()) as {
+    value?: { video?: string; uploadToken?: string; uploadInstructions?: { uploadUrl?: string; firstByte?: number; lastByte?: number }[] };
+  }).value ?? {};
+  const video = String(value.video ?? "");
+  if (!/^urn:li:video:[A-Za-z0-9_-]+$/.test(video)) throw new LiApiError("resposta sem URN do vídeo", 200);
+  const parts = Array.isArray(value.uploadInstructions) ? value.uploadInstructions : [];
+  if (parts.length === 0) throw new LiApiError("resposta sem instruções de upload", 200);
+
+  const etags: string[] = [];
+  for (const part of parts) {
+    const first = Number(part.firstByte);
+    const last = Number(part.lastByte);
+    if (!Number.isInteger(first) || !Number.isInteger(last) || first < 0 || last < first || last >= bytes.length) {
+      throw new LiApiError("instrução de upload com intervalo inválido", 200);
+    }
+    const url = linkedinUploadUrl(part.uploadUrl);
+    const res = await send(deps, url.toString(), {
+      method: "PUT",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: new Uint8Array(bytes.subarray(first, last + 1)),
+    }, 120_000);
+    const etag = res.headers.get("etag");
+    if (!etag) throw new LiApiError("upload do vídeo sem ETag", res.status);
+    etags.push(etag);
+  }
+
+  await send(deps, `${API}/videos?action=finalizeUpload`, {
+    method: "POST",
+    headers: headers(deps, token),
+    body: JSON.stringify({ finalizeUploadRequest: { video, uploadToken: String(value.uploadToken ?? ""), uploadedPartIds: etags } }),
+  });
+  await waitAvailable(deps, token, "videos", video, 120, 5000);
+  return video;
+}
+
+/** Sobe um PDF (Documents API): initializeUpload → PUT dos bytes → espera AVAILABLE. Devolve urn:li:document:…. */
+export async function uploadDocument(deps: LiApiDeps, token: string, owner: string, bytes: Buffer): Promise<string> {
+  const init = await send(deps, `${API}/documents?action=initializeUpload`, {
+    method: "POST",
+    headers: headers(deps, token),
+    body: JSON.stringify({ initializeUploadRequest: { owner } }),
+  });
+  const value = ((await init.json()) as { value?: { uploadUrl?: string; document?: string } }).value ?? {};
+  const doc = String(value.document ?? "");
+  if (!/^urn:li:document:[A-Za-z0-9_-]+$/.test(doc)) throw new LiApiError("resposta sem URN do documento", 200);
+  const url = linkedinUploadUrl(value.uploadUrl);
+  await send(deps, url.toString(), {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+    body: new Uint8Array(bytes),
+  }, 120_000);
+  await waitAvailable(deps, token, "documents", doc, 60, 3000);
+  return doc;
+}
+
+/** Comenta no post (o "1º comentário" com o link). Texto simples: o LinkedIn transforma URLs em links. */
+export async function createComment(deps: LiApiDeps, token: string, input: { actor: string; postUrn: string; text: string }): Promise<void> {
+  if (!/^urn:li:(share|ugcPost):\d+$/.test(input.postUrn)) throw new LiApiError("URN do post inválido", 0);
+  await send(deps, `${API}/socialActions/${encodeURIComponent(input.postUrn)}/comments`, {
+    method: "POST",
+    headers: headers(deps, token),
+    body: JSON.stringify({ actor: input.actor, object: input.postUrn, message: { text: input.text.slice(0, 1250) } }),
+  });
 }
 
 /**
@@ -151,6 +277,27 @@ export function buildCommentary(text: string, hashtags: string[], cta = ""): str
     body = `${escapeLittleText(raw.trimEnd())}…`;
   }
   return tagLine ? `${body}\n\n${tagLine}` : body;
+}
+
+/**
+ * Legenda escrita à mão (campanhas): escapa o "little text" e transforma cada #Palavra do texto no
+ * template oficial de hashtag, para que continue clicável. Limite da API: 3.000 caracteres.
+ */
+export function campaignCommentary(text: string): string {
+  const out: string[] = [];
+  let last = 0;
+  const re = /#([\p{L}\p{N}]+)/gu;
+  for (const m of text.matchAll(re)) {
+    const at = m.index ?? 0;
+    // "#" grudado numa palavra (ex.: C#) não é hashtag.
+    if (at > 0 && /[\p{L}\p{N}]/u.test(text[at - 1]!)) continue;
+    out.push(escapeLittleText(text.slice(last, at)), `{hashtag|\\#|${m[1]}}`);
+    last = at + m[0].length;
+  }
+  out.push(escapeLittleText(text.slice(last)));
+  const result = out.join("").trim();
+  if (result.length > 3000) throw new LiApiError("legenda passa de 3.000 caracteres depois do escape", 0);
+  return result;
 }
 
 /** Renova o access token com o refresh token (só apps com refresh habilitado, como a Community Management API). */
