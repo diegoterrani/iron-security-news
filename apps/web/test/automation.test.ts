@@ -61,6 +61,9 @@ describe("caminho e validação do vídeo", () => {
     expect(linkedinVideoSchema.safeParse({ ...ok, target: "organization" }).success).toBe(false);
     expect(linkedinVideoSchema.safeParse({ ...ok, caption: "   " }).success).toBe(false);
     expect(linkedinVideoSchema.safeParse({ ...ok, caption: "x".repeat(3001) }).success).toBe(false);
+    // Cabe cru (2.800), mas passa de 3.000 no LinkedIn: cada "#" e "_" ganha uma barra de escape.
+    expect(linkedinVideoSchema.safeParse({ ...ok, caption: "a_".repeat(1400) }).success).toBe(false);
+    expect(linkedinVideoSchema.safeParse({ ...ok, caption: "a_".repeat(700) }).success).toBe(true);
   });
 });
 

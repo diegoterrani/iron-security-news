@@ -4,11 +4,14 @@
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { linkedinCaptionLength } from "../admin/campaigns";
 
 export const MEDIA_BUCKET = "media";
 export const AUTOMATION_MEDIA_RE = /^campanhas\/auto\/[0-9a-f-]{36}\/video\.mp4$/;
 export const DEDUPE_KEY_RE = /^[a-z0-9][a-z0-9._-]{2,79}$/;
 export const MAX_BODY_BYTES = 16 * 1024;
+/** Limite da API do LinkedIn, contado sobre o texto já escapado (hashtags viram {hashtag|\\#|Tag}). */
+export const LINKEDIN_MAX_CAPTION = 3000;
 
 /** Caminho fixo, gerado só pelo servidor: o cliente nunca escolhe onde grava. */
 export function newAutomationMediaPath(uuid: string = randomUUID()): string {
@@ -22,7 +25,9 @@ const trimmed = (min: number, max: number) =>
 
 export const linkedinVideoSchema = z.object({
   campaign: trimmed(1, 80),
-  caption: trimmed(1, 3000),
+  caption: trimmed(1, 3000).refine((s) => linkedinCaptionLength(s) <= LINKEDIN_MAX_CAPTION, {
+    message: "legenda passa de 3.000 caracteres no LinkedIn depois do escape das #hashtags e símbolos",
+  }),
   media_path: z.string().regex(AUTOMATION_MEDIA_RE, "use o caminho devolvido por /uploads"),
   scheduled_for: z.string().datetime({ offset: true }),
   dedupe_key: z.string().regex(DEDUPE_KEY_RE, "a-z, 0-9, ponto, _ e -, 3 a 80"),
