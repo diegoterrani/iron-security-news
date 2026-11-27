@@ -91,6 +91,7 @@ export function linkedinCaptionLength(text: string): number {
   for (const m of text.matchAll(/#([\p{L}\p{N}]+)/gu)) {
     const at = m.index ?? 0;
     if (at > 0 && /[\p{L}\p{N}]/u.test(text[at - 1]!)) continue;
+    if (!/\p{L}/u.test(m[1]!)) continue; // "#3" não é hashtag (mesma regra do executor)
     total += escaped(text.slice(last, at)) + `{hashtag|\\#|${m[1]}}`.length;
     last = at + m[0].length;
   }

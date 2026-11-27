@@ -291,6 +291,8 @@ export function campaignCommentary(text: string): string {
     const at = m.index ?? 0;
     // "#" grudado numa palavra (ex.: C#) não é hashtag.
     if (at > 0 && /[\p{L}\p{N}]/u.test(text[at - 1]!)) continue;
+    // Só número (ex.: "Plantão Cyber #3") não é hashtag no LinkedIn: o template sairia cru no post.
+    if (!/\p{L}/u.test(m[1]!)) continue;
     out.push(escapeLittleText(text.slice(last, at)), `{hashtag|\\#|${m[1]}}`);
     last = at + m[0].length;
   }

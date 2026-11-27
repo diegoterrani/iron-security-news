@@ -44,6 +44,7 @@ describe("campanhas: tamanho da legenda no LinkedIn", () => {
     const expected = "Agende \\(7 dias\\): iron.com/a\\_b\n\n{hashtag|\\#|Cibersegurança} {hashtag|\\#|CISO}".length;
     expect(linkedinCaptionLength("Agende (7 dias): iron.com/a_b\n\n#Cibersegurança #CISO")).toBe(expected);
     expect(linkedinCaptionLength("C#")).toBe(3);
+    expect(linkedinCaptionLength("Plantão #3")).toBe("Plantão \\#3".length);
   });
   it("3.000 caracteres crus com hashtags passam do limite no LinkedIn, mas não no Instagram", () => {
     const text = `${"a".repeat(2990)} #CISO`;
