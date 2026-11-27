@@ -51,7 +51,7 @@ describe("fila do WhatsApp", () => {
   it("monta capa e legenda do pedido", async () => {
     const { pool } = fakePool([
       { rowCount: 0 },
-      { rows: [{ id: JOB, story_id: STORY, lang: "pt" }] },
+      { rows: [{ id: JOB, story_id: STORY, lang: "pt", body: null }] },
       { rows: [{ title: "Falha crítica", tldr: "Resumo.", url: URL, cover: "https://cdn/cover.png" }] },
     ]);
     expect(await claimWhatsappJob(pool)).toEqual({
@@ -63,13 +63,42 @@ describe("fila do WhatsApp", () => {
   it("pedido sem capa falha com o motivo e passa para o próximo", async () => {
     const { pool, calls } = fakePool([
       { rowCount: 0 },
-      { rows: [{ id: JOB, story_id: STORY, lang: "pt" }] },
+      { rows: [{ id: JOB, story_id: STORY, lang: "pt", body: null }] },
       { rows: [{ title: "Falha", tldr: "", url: URL, cover: null }] },
       { rowCount: 1 },
       { rows: [] },
     ]);
     expect(await claimWhatsappJob(pool)).toBeNull();
     expect(calls[3]!.params).toEqual([JOB, "sem capa"]);
+  });
+
+  it("só pega pedidos cujo horário já chegou, na ordem do horário", async () => {
+    const { pool, calls } = fakePool([{ rowCount: 0 }, { rows: [] }]);
+    await claimWhatsappJob(pool);
+    expect(calls[1]!.sql).toMatch(/status = 'pending' and send_after <= now\(\)/);
+    expect(calls[1]!.sql).toMatch(/order by send_after, requested_at/);
+  });
+
+  it("texto pronto da automação vai como está, sem capa", async () => {
+    const { pool, calls } = fakePool([
+      { rowCount: 0 },
+      { rows: [{ id: JOB, story_id: null, lang: "pt", body: "  *Plantão Cyber nº 4*\n\nhttps://youtu.be/x  " }] },
+    ]);
+    expect(await claimWhatsappJob(pool)).toEqual({
+      id: JOB, storyId: null, mediaUrl: null, caption: "*Plantão Cyber nº 4*\n\nhttps://youtu.be/x",
+    });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("texto vazio falha com o motivo e passa para o próximo", async () => {
+    const { pool, calls } = fakePool([
+      { rowCount: 0 },
+      { rows: [{ id: JOB, story_id: null, lang: "pt", body: "   " }] },
+      { rowCount: 1 },
+      { rows: [] },
+    ]);
+    expect(await claimWhatsappJob(pool)).toBeNull();
+    expect(calls[2]!.params).toEqual([JOB, "mensagem vazia"]);
   });
 
   it("done e fail só mudam pedidos em envio", async () => {

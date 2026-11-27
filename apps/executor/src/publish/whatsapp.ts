@@ -1,16 +1,21 @@
 import type { Pool } from "../db";
 
 /**
- * Envio ao grupo do WhatsApp. O executor só prepara: pega o próximo pedido (review_publish_whatsapp),
- * monta capa + legenda e registra o resultado. Quem envia é infra/vps/whatsapp-relay.sh, na VPS, pelo
+ * Envio ao grupo do WhatsApp. O executor só prepara: pega o próximo pedido, monta a mensagem e registra o
+ * resultado. Dois tipos de pedido na mesma fila:
+ *   - story do blog (painel, review_publish_whatsapp): capa + legenda montadas aqui;
+ *   - texto pronto com horário (automação do Plantão Cyber, automation_whatsapp_group_create): só texto,
+ *     o WhatsApp monta a prévia do link. Só sai quando send_after já passou. Quem envia é infra/vps/whatsapp-relay.sh, na VPS, pelo
  * gateway do OpenClaw (que só escuta em loopback e o container não alcança).
  */
 
 export interface WhatsappJob {
   id: string;
-  storyId: string;
+  /** null no texto pronto da automação. */
+  storyId: string | null;
   caption: string;
-  mediaUrl: string;
+  /** null = mensagem só de texto (o relay não passa --media). */
+  mediaUrl: string | null;
 }
 
 /** Envio parado em 'sending' por mais que isto: o relay caiu no meio e não sabemos se saiu. */
@@ -39,7 +44,8 @@ export function whatsappCaption(p: { title: string; tldr: string; url: string })
 /**
  * Pega o próximo pedido e o marca 'sending'. Antes, envios presos em 'sending' viram 'failed' (e não
  * voltam para a fila sozinhos): reenviar às cegas poderia duplicar a mensagem no grupo.
- * Se faltar capa, artigo ou link, o pedido falha com o motivo e o próximo é tentado.
+ * Só pega pedidos cujo send_after já passou (os da automação podem estar agendados para mais tarde).
+ * Texto pronto vai como está. Story sem capa, artigo ou link falha com o motivo e o próximo é tentado.
  */
 export async function claimWhatsappJob(pool: Pool): Promise<WhatsappJob | null> {
   await pool.query(
@@ -49,13 +55,23 @@ export async function claimWhatsappJob(pool: Pool): Promise<WhatsappJob | null> 
     [STALE_SENDING_MINUTES],
   );
   for (;;) {
-    const { rows: [row] } = await pool.query<{ id: string; story_id: string; lang: string }>(
+    const { rows: [row] } = await pool.query<{ id: string; story_id: string | null; lang: string; body: string | null }>(
       `update whatsapp_posts set status = 'sending', claimed_at = now(), attempts = attempts + 1
-        where id = (select id from whatsapp_posts where status = 'pending'
-                     order by requested_at limit 1 for update skip locked)
-       returning id, story_id, lang`,
+        where id = (select id from whatsapp_posts where status = 'pending' and send_after <= now()
+                     order by send_after, requested_at limit 1 for update skip locked)
+       returning id, story_id, lang, body`,
     );
     if (!row) return null;
+    if (row.body !== null) {
+      const text = row.body.trim();
+      if (text) return { id: row.id, storyId: null, caption: text, mediaUrl: null };
+      await failWhatsappJob(pool, row.id, "mensagem vazia");
+      continue;
+    }
+    if (!row.story_id) {
+      await failWhatsappJob(pool, row.id, "pedido sem story e sem texto");
+      continue;
+    }
     const { rows: [d] } = await pool.query<{ title: string | null; tldr: string | null; url: string | null; cover: string | null }>(
       `select c.title, c.body->>'tldr' as tldr,
               (select external_url from channel_posts
